@@ -1,0 +1,11 @@
+local OldFindService;
+OldFindService = hookfunction(game.FindService, newcclosure(function(...)
+print(...)
+end))
+
+local OldFireServer;
+OldFireServer = hookfunction(Instance.new("RemoteEvent").FireServer, newcclosure(function(...)
+local Args = {...}
+print(unpack(Args))
+return
+end))
