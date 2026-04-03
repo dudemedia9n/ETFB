@@ -31,6 +31,16 @@ if PlaceId == 131623223084840 then
     return 
 end
 
+-- Infinity filter
+local INFINITY_NAMES = {
+    ["Meta Technetta"] = true,
+    ["Doomini Tiktookini"] = true,
+    ["Tung Tung Clownissimo"] = true,
+    ["Anububu"] = true,
+    ["Magmew"] = true,
+    ["Noobini Infeeny"] = true
+}
+
 -- Configuration
 local HITBOX_SIZE = Vector3.new(25, 25, 25)
 local ARENA_FOLDER_NAME = "ArenaBrainrots"
@@ -45,7 +55,7 @@ local ARRIVAL_THRESHOLD = 0.0005
 local MIN_TWEEN_TIME = 0.0005
 local HARPOON_COOLDOWN = 0
 local lastHarpoonTime = 0
-local fireRange = 250
+local fireRange = 175
 local arrivalDelay = 0.2 -- arrival delay in seconds (0-1 sec)
 local heightOffset = 0 -- height offset for harpoon
 
