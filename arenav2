@@ -32,27 +32,22 @@ if PlaceId == 131623223084840 then
 end
 
 -- Configuration
-
 local HITBOX_SIZE = Vector3.new(25, 25, 25)
 local ARENA_FOLDER_NAME = "ArenaBrainrots"
 
 _G.OriginalArenaData = _G.OriginalArenaData or {}
 
 -- Settings
-local autoHarpoonEnabled = true
-local tweenSpeed = 1300 -- studs/sec for brainrot
-local CARRY_TWEEN_SPEED = 2000 -- default for execution spot
-local RETURN_SPEED = 100 -- speed for tween back from extra
+local autoHarpoonEnabled = false
+local tweenSpeed = 5000 -- studs/sec for brainrot
+local CARRY_TWEEN_SPEED = 2000 -- speed for middle/final
 local ARRIVAL_THRESHOLD = 0.0005
 local MIN_TWEEN_TIME = 0.0005
 local HARPOON_COOLDOWN = 0.0000005
 local lastHarpoonTime = 0
-local fireRange = 200
-local tpDelay = 0.1 -- teleport delay in seconds
+local fireRange = 250
 local arrivalDelay = 0.2 -- arrival delay in seconds (0-1 sec)
-
--- NEW: Height Offset
-local heightOffset = 0
+local heightOffset = 0 -- height offset for harpoon
 
 local player = game.Players.LocalPlayer
 local char = player.Character or player.CharacterAdded:Wait()
@@ -152,34 +147,19 @@ task.spawn(function()
     end
 end)
 
--- Execution spot
-local executionPos = hrp.Position
-
--- Predefined middle position (for carrying, still unused here)
-local PRE_CARRY_POS = Vector3.new(5608.63232421875, 37.043312072753906, 2718.615966796875)
-
--- Middle position if NO brainrot
-local MIDDLE_POS_NO_BRAINROT = Vector3.new(5601.8251953125, 3.184265375137329, 2696.59814453125)
-
--- Main execution positions
-local extraPositions = {
-    Vector3.new(4194.25830078125, 3.1842634677886963, 2703.1640625),
-    Vector3.new(7000.59375, 3.1842634677886963, 2676.3984375),
-    Vector3.new(5598.11474609375, 3.1842634677886963, 4119.67041015625),
-    Vector3.new(5601.75244140625, 3.1842634677886963, 1265.557861328125)
-}
-
-local targetPositions = {
-    Vector3.new(5597.517578125, 3.1843340396881104, 1100.739013671875),
-    Vector3.new(4044.139892578125, 3.184265375137329, 2680.284912109375),
-    Vector3.new(5608.93408203125, 3.184196710586548, 4272.66162109375),
-    Vector3.new(7164.22265625, 3.184265375137329, 2687.075439453125)
+-- Execution positions
+local PRE_CARRY_POS = Vector3.new(5601.8251953125, 3.184265375137329, 2696.59814453125) -- middle pos
+local TARGET_POSITIONS = {
+    Vector3.new(7183.76220703125, 3.184265375137329, 2690.36376953125),
+    Vector3.new(5611.3349609375, 3.1843338012695312, 1092.7916259765625),
+    Vector3.new(4021.99951171875, 3.184265375137329, 2684.496337890625),
+    Vector3.new(5612.6328125, 3.184196710586548, 4285.27880859375)
 }
 
 local function getClosestTarget(pos)
     local closest = nil
     local shortestDist = math.huge
-    for _, tPos in ipairs(targetPositions) do
+    for _, tPos in ipairs(TARGET_POSITIONS) do
         local dist = (pos - tPos).Magnitude
         if dist < shortestDist then
             shortestDist = dist
@@ -189,20 +169,7 @@ local function getClosestTarget(pos)
     return closest
 end
 
-local function getClosestExtra(pos)
-    local closest = nil
-    local shortestDist = math.huge
-    for _, tPos in ipairs(extraPositions) do
-        local dist = (pos - tPos).Magnitude
-        if dist < shortestDist then
-            shortestDist = dist
-            closest = tPos
-        end
-    end
-    return closest
-end
-
-local FINAL_EXECUTION_POS = getClosestTarget(executionPos)
+local FINAL_EXECUTION_POS = getClosestTarget(hrp.Position)
 
 local harpoonRemote = ReplicatedStorage:WaitForChild("Shared")
     :WaitForChild("Remotes")
@@ -305,33 +272,21 @@ local function createGUI()
     execSpeedBox.ClearTextOnFocus = false
     execSpeedBox.Parent = screenGui
 
-    local tpSpeedBox = Instance.new("TextBox")
-    tpSpeedBox.Size = UDim2.new(0,180,0,50)
-    tpSpeedBox.Position = UDim2.new(0,10,0,190)
-    tpSpeedBox.Text = tostring(tpDelay*1000)
-    tpSpeedBox.PlaceholderText = "TP Speed (0-1000 ms)"
-    tpSpeedBox.BackgroundColor3 = Color3.fromRGB(0,170,255)
-    tpSpeedBox.TextColor3 = Color3.new(1,1,1)
-    tpSpeedBox.Font = Enum.Font.SourceSansBold
-    tpSpeedBox.TextScaled = true
-    tpSpeedBox.ClearTextOnFocus = false
-    tpSpeedBox.Parent = screenGui
-
-    local delayBox = Instance.new("TextBox")
-    delayBox.Size = UDim2.new(0,180,0,50)
-    delayBox.Position = UDim2.new(0,10,0,250)
-    delayBox.Text = tostring(arrivalDelay*1000)
-    delayBox.PlaceholderText = "Arrival Delay (0-1000 ms)"
-    delayBox.BackgroundColor3 = Color3.fromRGB(0,170,255)
-    delayBox.TextColor3 = Color3.new(1,1,1)
-    delayBox.Font = Enum.Font.SourceSansBold
-    delayBox.TextScaled = true
-    delayBox.ClearTextOnFocus = false
-    delayBox.Parent = screenGui
+    local arrivalBox = Instance.new("TextBox")
+    arrivalBox.Size = UDim2.new(0,180,0,50)
+    arrivalBox.Position = UDim2.new(0,10,0,190)
+    arrivalBox.Text = tostring(arrivalDelay*1000)
+    arrivalBox.PlaceholderText = "Arrival Delay (0-1000 ms)"
+    arrivalBox.BackgroundColor3 = Color3.fromRGB(0,170,255)
+    arrivalBox.TextColor3 = Color3.new(1,1,1)
+    arrivalBox.Font = Enum.Font.SourceSansBold
+    arrivalBox.TextScaled = true
+    arrivalBox.ClearTextOnFocus = false
+    arrivalBox.Parent = screenGui
 
     local heightBox = Instance.new("TextBox")
     heightBox.Size = UDim2.new(0,180,0,50)
-    heightBox.Position = UDim2.new(0,10,0,310)
+    heightBox.Position = UDim2.new(0,10,0,250)
     heightBox.Text = tostring(heightOffset)
     heightBox.PlaceholderText = "Height Offset (-100 to 100)"
     heightBox.BackgroundColor3 = Color3.fromRGB(0,170,255)
@@ -343,7 +298,6 @@ local function createGUI()
 end
 
 createGUI()
-
 player.CharacterAdded:Connect(function(charNew)
     char = charNew
     hrp = char:WaitForChild("HumanoidRootPart")
@@ -354,30 +308,7 @@ local carryStage = "middle"
 
 while true do
     expandHitboxes()
-
     local carrying = char:FindFirstChild("RenderedBrainrot") ~= nil
-
-    -- NEW: Tween to middle if no brainrot
-    if not carrying then
-        local target = getClosestBrainrot()
-        if not target then
-            local middlePos = MIDDLE_POS_NO_BRAINROT
-            if (hrp.Position - middlePos).Magnitude > 2 then
-                local tweenTime = math.max((hrp.Position - middlePos).Magnitude / CARRY_TWEEN_SPEED, MIN_TWEEN_TIME)
-                local tween = TweenService:Create(hrp, TweenInfo.new(tweenTime, Enum.EasingStyle.Linear), {CFrame = CFrame.new(middlePos)})
-                tween:Play()
-                while tween.PlaybackState == Enum.PlaybackState.Playing do
-                    carrying = char:FindFirstChild("RenderedBrainrot") ~= nil
-                    target = getClosestBrainrot()
-                    if carrying or target then
-                        tween:Cancel()
-                        break
-                    end
-                    task.wait(0.05)
-                end
-            end
-        end
-    end
 
     if carrying then
         local middlePos = PRE_CARRY_POS
@@ -387,15 +318,17 @@ while true do
             local tweenInfo = TweenInfo.new((hrp.Position - middlePos).Magnitude / CARRY_TWEEN_SPEED, Enum.EasingStyle.Linear)
             local tween = TweenService:Create(hrp, tweenInfo, {CFrame = CFrame.new(middlePos)})
             tween:Play()
+
             while tween.PlaybackState == Enum.PlaybackState.Playing do
                 local target = getClosestBrainrot()
                 carrying = char:FindFirstChild("RenderedBrainrot") ~= nil
-                if carrying or (target and (hrp.Position - target.Position).Magnitude <= 250) then
+                if carrying or target then -- Stop if carrying or any brainrot exists
                     tween:Cancel()
                     break
                 end
                 task.wait(0.05)
             end
+
             carryStage = "final"
 
         elseif carryStage == "final" then
@@ -406,28 +339,35 @@ while true do
                 tween:Play()
                 tween.Completed:Wait()
             end
+
             task.wait(arrivalDelay)
-            local closestExtra = getClosestExtra(finalPos)
-            if closestExtra then
-                hrp.CFrame = CFrame.new(closestExtra)
-                task.wait(tpDelay)
-                hrp.CFrame = CFrame.new(finalPos)
-            end
         end
+
     else
         carryStage = "middle"
+        -- Tween to middle if no brainrots at all
+        local target = getClosestBrainrot()
+        if not target then
+            local middlePos = PRE_CARRY_POS
+            local tweenInfo = TweenInfo.new((hrp.Position - middlePos).Magnitude / CARRY_TWEEN_SPEED, Enum.EasingStyle.Linear)
+            local tween = TweenService:Create(hrp, tweenInfo, {CFrame = CFrame.new(middlePos)})
+            tween:Play()
+            tween.Completed:Wait()
+        end
     end
 
+    -- Auto-Harpoon
     if autoHarpoonEnabled then
         local target = getClosestBrainrot()
         if target and target.Parent then
             local targetPos = target.Position + Vector3.new(55, heightOffset, 0)
             local distance = (hrp.Position - targetPos).Magnitude
-            if distance > 200 then
+            if distance > 250 then
                 local tweenTime = math.max(distance / tweenSpeed, MIN_TWEEN_TIME)
                 local tween = TweenService:Create(hrp, TweenInfo.new(tweenTime), {CFrame = CFrame.new(targetPos)})
                 tween:Play()
             end
+
             local now = tick()
             if (hrp.Position - target.Position).Magnitude <= fireRange and now - lastHarpoonTime >= HARPOON_COOLDOWN then
                 lastHarpoonTime = now
