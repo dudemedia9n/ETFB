@@ -156,6 +156,8 @@ local TARGET_POSITIONS = {
     Vector3.new(5612.6328125, 3.184196710586548, 4285.27880859375)
 }
 
+task.wait(2)
+
 local function getClosestTarget(pos)
     local closest = nil
     local shortestDist = math.huge
@@ -168,6 +170,7 @@ local function getClosestTarget(pos)
     end
     return closest
 end
+
 
 local FINAL_EXECUTION_POS = getClosestTarget(hrp.Position)
 
