@@ -47,7 +47,7 @@ local ARRIVAL_THRESHOLD = 0.0005
 local MIN_TWEEN_TIME = 0.0005
 local HARPOON_COOLDOWN = 0.0000005
 local lastHarpoonTime = 0
-local fireRange = 250
+local fireRange = 200
 local tpDelay = 0.1 -- teleport delay in seconds
 local arrivalDelay = 0.2 -- arrival delay in seconds (0-1 sec)
 
