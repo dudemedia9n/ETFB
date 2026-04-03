@@ -19,7 +19,7 @@ if PlaceId == 131623223084840 then
             end
         end
         
-        task.wait(0.5)
+        task.wait(0.1)
         
         local Event = game:GetService("ReplicatedStorage").Shared.Remotes.Networking["RE/ArenaPortal/ArenaQueueJoin"]
         pcall(function()
