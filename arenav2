@@ -68,37 +68,6 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local player = game:GetService("Players").LocalPlayer
 
-local character = player.Character or player.CharacterAdded:Wait()
-
--- Function to enable noclip
-local function enableNoclip(char)
-    for _, part in ipairs(char:GetDescendants()) do
-        if part:IsA("BasePart") then
-            part.CanCollide = false
-        end
-    end
-end
-
--- Enable noclip on current character
-enableNoclip(character)
-
--- Keep noclip active every frame
-RunService.RenderStepped:Connect(function()
-    if character and character.Parent then
-        for _, part in ipairs(character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false
-            end
-        end
-    end
-end)
-
--- Re-apply noclip when character respawns
-player.CharacterAdded:Connect(function(newCharacter)
-    character = newCharacter
-    enableNoclip(character)
-end)
-
 local function setupCharacter(character)
     local humanoid = character:WaitForChild("Humanoid")
     humanoid.Sit = false
