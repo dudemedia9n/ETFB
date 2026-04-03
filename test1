@@ -3089,6 +3089,28 @@ task.spawn(function()
 end)
 
 -- ================================================
+-- PREMIUM MEMBER LIST + BILLBOARD LABEL
+-- ================================================
+-- ... (top variables remain the same)
+
+local function applyPremiumLabel(targetPlayer)
+    -- This specific line prevents your own tag from showing up
+    if targetPlayer == game:GetService("Players").LocalPlayer then return end
+
+    local char = targetPlayer.Character
+    if not char then return end
+    local head = char:FindFirstChild("Head")
+    if not head then return end
+
+    if head:FindFirstChild("PremiumBB") then return end
+
+    local username  = targetPlayer.Name:lower()
+    local devTag    = isDeveloper(username)
+    local isPremium = premiumMembers[username] ~= nil
+
+    if not devTag and not isPremium then return end
+    
+-- ================================================
 -- FAKE CONSOLE LOOP
 -- ================================================
 task.spawn(function()
