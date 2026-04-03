@@ -39,7 +39,7 @@ _G.OriginalArenaData = _G.OriginalArenaData or {}
 
 -- Settings
 local autoHarpoonEnabled = false
-local tweenSpeed = 5000 -- studs/sec for brainrot
+local tweenSpeed = 1300 -- studs/sec for brainrot
 local CARRY_TWEEN_SPEED = 2000 -- speed for middle/final
 local ARRIVAL_THRESHOLD = 0.0005
 local MIN_TWEEN_TIME = 0.0005
