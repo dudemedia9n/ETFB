@@ -3091,25 +3091,150 @@ end)
 -- ================================================
 -- PREMIUM MEMBER LIST + BILLBOARD LABEL
 -- ================================================
--- ... (top variables remain the same)
+
+local premiumMembers = {} -- { ["andrekilang12309"] = true, ... }
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
+local developerKeywords = {
+	"pendupe_h",
+	"pusingbat",
+	"juragan_s",
+	"whynoot",
+}
+
+local function isDeveloper(username)
+	local lower = username:lower()
+	for _, kw in ipairs(developerKeywords) do
+		if lower:find(kw, 1, true) then
+			return true
+		end
+	end
+	return false
+end
 
 local function applyPremiumLabel(targetPlayer)
-    -- This specific line prevents your own tag from showing up
-    if targetPlayer == game:GetService("Players").LocalPlayer then return end
+	-- SKIP applying label to yourself
+	if targetPlayer == player then return end
+	
+	local char = targetPlayer.Character
+	if not char then return end
+	local head = char:FindFirstChild("Head")
+	if not head then return end
 
-    local char = targetPlayer.Character
-    if not char then return end
-    local head = char:FindFirstChild("Head")
-    if not head then return end
+	if head:FindFirstChild("PremiumBB") then return end
 
-    if head:FindFirstChild("PremiumBB") then return end
+	local username = targetPlayer.Name:lower()
+	local devTag = isDeveloper(username)
+	local isPremium = premiumMembers[username] ~= nil
 
-    local username  = targetPlayer.Name:lower()
-    local devTag    = isDeveloper(username)
-    local isPremium = premiumMembers[username] ~= nil
+	if not devTag and not isPremium then return end
 
-    if not devTag and not isPremium then return end
-    
+	local bb = Instance.new("BillboardGui")
+	bb.Name = "PremiumBB"
+	bb.Size = UDim2.new(0, 160, 0, 30)
+	bb.StudsOffset = Vector3.new(0, 3.2, 0)
+	bb.AlwaysOnTop = false
+	bb.MaxDistance = 80
+	bb.Parent = head
+
+	local bg = Instance.new("Frame")
+	bg.Size = UDim2.new(1, 0, 1, 0)
+	bg.BackgroundColor3 = Color3.fromRGB(10, 10, 18)
+	bg.BackgroundTransparency = 0.2
+	bg.BorderSizePixel = 0
+	bg.Parent = bb
+	do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = bg end
+
+	if devTag then
+		do local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(255,80,80); s.Thickness = 1.5; s.Parent = bg end
+	else
+		do local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(80,200,255); s.Thickness = 1; s.Parent = bg end
+	end
+
+	local lbl = Instance.new("TextLabel")
+	lbl.Size = UDim2.new(1, 0, 1, 0)
+	lbl.BackgroundTransparency = 1
+	lbl.Text = devTag and "⭐DEVELOPER⭐" or "⭐ Premium papi dimz"
+	lbl.TextColor3 = Color3.fromRGB(80, 200, 255)
+	lbl.TextSize = 12
+	lbl.Font = Enum.Font.GothamBold
+	lbl.Parent = bg
+
+	if devTag then
+		local rainbowColors = {
+			Color3.fromRGB(255, 80, 80),
+			Color3.fromRGB(255, 160, 40),
+			Color3.fromRGB(255, 230, 40),
+			Color3.fromRGB( 80, 220, 80),
+			Color3.fromRGB( 60, 180, 255),
+			Color3.fromRGB(160, 80, 255),
+			Color3.fromRGB(255, 80, 200),
+		}
+		local colorIdx = 1
+		local timer = 0
+		game:GetService("RunService").Heartbeat:Connect(function(dt)
+			if not lbl or not lbl.Parent then return end
+			timer = timer + dt
+			if timer < 0.12 then return end
+			timer = 0
+			colorIdx = (colorIdx % #rainbowColors) + 1
+			local c = rainbowColors[colorIdx]
+			lbl.TextColor3 = c
+			local stroke = bg:FindFirstChildOfClass("UIStroke")
+			if stroke then stroke.Color = c end
+		end)
+	end
+end
+
+local function applyAllPremiumLabels()
+	for _, p in ipairs(Players:GetPlayers()) do
+		pcall(applyPremiumLabel, p)
+	end
+end
+
+-- Fetch daftar premium dari Firebase lalu pasang label
+task.spawn(function()
+	local HttpService = game:GetService("HttpService")
+	local FIREBASE_P = "https://hexacore-5455a-default-rtdb.asia-southeast1.firebasedatabase.app"
+
+	task.wait(4)
+
+	local ok, result = pcall(function()
+		return game:HttpGet(FIREBASE_P .. "/member_premium.json?shallow=true")
+	end)
+
+	if ok then
+		local ok2, data = pcall(function()
+			return HttpService:JSONDecode(result)
+		end)
+		if ok2 and type(data) == "table" then
+			for key, _ in pairs(data) do
+				if type(key) == "string" then
+					premiumMembers[key:lower()] = true
+				end
+			end
+			local count = 0
+			for _ in pairs(premiumMembers) do count = count + 1 end
+			applyAllPremiumLabels()
+		end
+	else
+	end
+end)
+
+-- Pasang label ke player yang join setelah fetch selesai
+Players.PlayerAdded:Connect(function(p)
+	p.CharacterAdded:Connect(function()
+		task.wait(1)
+		pcall(applyPremiumLabel, p)
+	end)
+end)
+
+-- Pasang ulang ke semua player saat karakter kita respawn
+player.CharacterAdded:Connect(function()
+	task.wait(1)
+	applyAllPremiumLabels()
+end)
 -- ================================================
 -- FAKE CONSOLE LOOP
 -- ================================================
