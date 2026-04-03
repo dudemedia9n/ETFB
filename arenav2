@@ -40,7 +40,7 @@ _G.OriginalArenaData = _G.OriginalArenaData or {}
 
 -- Settings
 local autoHarpoonEnabled = true
-local tweenSpeed = 5000 -- studs/sec for brainrot
+local tweenSpeed = 1300 -- studs/sec for brainrot
 local CARRY_TWEEN_SPEED = 2000 -- default for execution spot
 local RETURN_SPEED = 100 -- speed for tween back from extra
 local ARRIVAL_THRESHOLD = 0.0005
