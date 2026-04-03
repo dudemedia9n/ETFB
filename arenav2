@@ -1,0 +1,394 @@
+local PlaceId = game.PlaceId
+if PlaceId == 131623223084840 then
+    local function equipAnububu()
+        local player = game.Players.LocalPlayer
+        local char = player.Character or player.CharacterAdded:Wait()
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        local backpack = player:FindFirstChildOfClass("Backpack")
+        
+        if humanoid and backpack then
+            for _, tool in ipairs(backpack:GetChildren()) do
+                if tool:IsA("Tool") and tool:GetAttribute("BrainrotName") == "Anububu" then
+                    -- Check the Scale attribute
+                    local scale = tool:GetAttribute("Scale")
+                    if scale and scale > 0.8 and scale < 1.2 then
+                        humanoid:EquipTool(tool)
+                        break
+                    end
+                end
+            end
+        end
+        
+        task.wait(0.5)
+        
+        local Event = game:GetService("ReplicatedStorage").Shared.Remotes.Networking["RE/ArenaPortal/ArenaQueueJoin"]
+        pcall(function()
+            Event:FireServer("TsunamiArena_FFA_8")
+        end)
+    end
+    
+    equipAnububu()
+    return 
+end
+
+-- Configuration
+
+local HITBOX_SIZE = Vector3.new(25, 25, 25)
+local ARENA_FOLDER_NAME = "ArenaBrainrots"
+
+_G.OriginalArenaData = _G.OriginalArenaData or {}
+
+-- Settings
+local autoHarpoonEnabled = false
+local tweenSpeed = 5000 -- studs/sec for brainrot
+local CARRY_TWEEN_SPEED = 2000 -- default for execution spot
+local RETURN_SPEED = 100 -- speed for tween back from extra
+local ARRIVAL_THRESHOLD = 0.0005
+local MIN_TWEEN_TIME = 0.0005
+local HARPOON_COOLDOWN = 0.0000005
+local lastHarpoonTime = 0
+local fireRange = 250
+local tpDelay = 0.1 -- teleport delay in seconds
+local arrivalDelay = 0.2 -- arrival delay in seconds (0-1 sec)
+
+-- NEW: Height Offset
+local heightOffset = 0
+
+local player = game.Players.LocalPlayer
+local char = player.Character or player.CharacterAdded:Wait()
+local hrp = char:WaitForChild("HumanoidRootPart")
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+
+-- SMART AUTO EQUIP (Harpoon + Wave Shield)
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if not char then continue end
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if not humanoid then continue end
+
+        local carrying = char:FindFirstChild("RenderedBrainrot") ~= nil
+        local backpack = player:FindFirstChildOfClass("Backpack")
+
+        local function findTool(gearType)
+            for _, tool in ipairs(char:GetChildren()) do
+                if tool:IsA("Tool") and tool:GetAttribute("GearType") == gearType then
+                    return tool
+                end
+            end
+            if backpack then
+                for _, tool in ipairs(backpack:GetChildren()) do
+                    if tool:IsA("Tool") and tool:GetAttribute("GearType") == gearType then
+                        return tool
+                    end
+                end
+            end
+            return nil
+        end
+
+        local desiredGear = carrying and "Wave Shield" or "Harpoon Gun"
+        local tool = findTool(desiredGear)
+
+        if tool then
+            if tool.Parent ~= char then
+                humanoid:EquipTool(tool)
+            end
+            if not char:FindFirstChild(tool.Name) then
+                tool.Parent = char
+                humanoid:EquipTool(tool)
+            end
+        end
+    end
+end)
+
+-- Execution spot
+local executionPos = hrp.Position
+
+-- Predefined middle position (for carrying, still unused here)
+local PRE_CARRY_POS = Vector3.new(5608.63232421875, 37.043312072753906, 2718.615966796875)
+
+-- Middle position if NO brainrot
+local MIDDLE_POS_NO_BRAINROT = Vector3.new(5601.8251953125, 3.184265375137329, 2696.59814453125)
+
+-- Main execution positions
+local extraPositions = {
+    Vector3.new(4194.25830078125, 3.1842634677886963, 2703.1640625),
+    Vector3.new(7000.59375, 3.1842634677886963, 2676.3984375),
+    Vector3.new(5598.11474609375, 3.1842634677886963, 4119.67041015625),
+    Vector3.new(5601.75244140625, 3.1842634677886963, 1265.557861328125)
+}
+
+local targetPositions = {
+    Vector3.new(5597.517578125, 3.1843340396881104, 1100.739013671875),
+    Vector3.new(4044.139892578125, 3.184265375137329, 2680.284912109375),
+    Vector3.new(5608.93408203125, 3.184196710586548, 4272.66162109375),
+    Vector3.new(7164.22265625, 3.184265375137329, 2687.075439453125)
+}
+
+local function getClosestTarget(pos)
+    local closest = nil
+    local shortestDist = math.huge
+    for _, tPos in ipairs(targetPositions) do
+        local dist = (pos - tPos).Magnitude
+        if dist < shortestDist then
+            shortestDist = dist
+            closest = tPos
+        end
+    end
+    return closest
+end
+
+local function getClosestExtra(pos)
+    local closest = nil
+    local shortestDist = math.huge
+    for _, tPos in ipairs(extraPositions) do
+        local dist = (pos - tPos).Magnitude
+        if dist < shortestDist then
+            shortestDist = dist
+            closest = tPos
+        end
+    end
+    return closest
+end
+
+local FINAL_EXECUTION_POS = getClosestTarget(executionPos)
+
+local harpoonRemote = ReplicatedStorage:WaitForChild("Shared")
+    :WaitForChild("Remotes")
+    :WaitForChild("Networking")
+    :WaitForChild("RE/Harpoon/HarpoonActivate")
+
+local function expandHitboxes()
+    local folder = workspace:FindFirstChild(ARENA_FOLDER_NAME)
+    if not folder then return end
+    for _, obj in ipairs(folder:GetChildren()) do
+        local root = obj:FindFirstChild("Root", true) or obj:FindFirstChildWhichIsA("BasePart")
+        if root then
+            if _G.OriginalArenaData[root] == nil then
+                _G.OriginalArenaData[root] = {
+                    Size = root.Size,
+                    Transparency = root.Transparency,
+                    CanCollide = root.CanCollide,
+                    Massless = root.Massless
+                }
+            end
+            root.Massless = true
+            root.Size = HITBOX_SIZE
+            root.Transparency = 0.8
+            root.CanCollide = false
+            root.CanTouch = true
+            root.CanQuery = true
+        end
+    end
+end
+
+local function getClosestBrainrot()
+    local folder = workspace:FindFirstChild(ARENA_FOLDER_NAME)
+    if not folder then return nil end
+    local closest = nil
+    local shortestDist = math.huge
+    for _, obj in ipairs(folder:GetChildren()) do
+        local root = obj:FindFirstChild("Root", true) or obj:FindFirstChildWhichIsA("BasePart")
+        if root then
+            local dist = (hrp.Position - root.Position).Magnitude
+            if dist < shortestDist then
+                shortestDist = dist
+                closest = root
+            end
+        end
+    end
+    return closest
+end
+
+-- GUI setup
+local function createGUI()
+    local playerGui = player:WaitForChild("PlayerGui")
+    if playerGui:FindFirstChild("AutoHarpoonGUI") then
+        playerGui.AutoHarpoonGUI:Destroy()
+    end
+
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "AutoHarpoonGUI"
+    screenGui.Parent = playerGui
+
+    local toggleButton = Instance.new("TextButton")
+    toggleButton.Size = UDim2.new(0, 200, 0, 50)
+    toggleButton.Position = UDim2.new(0, 10, 0, 10)
+    toggleButton.Text = autoHarpoonEnabled and "Auto-Harpoon: ON" or "Auto-Harpoon: OFF"
+    toggleButton.BackgroundColor3 = Color3.fromRGB(255, 85, 0)
+    toggleButton.TextColor3 = Color3.new(1,1,1)
+    toggleButton.Font = Enum.Font.SourceSansBold
+    toggleButton.TextScaled = true
+    toggleButton.Parent = screenGui
+    toggleButton.MouseButton1Click:Connect(function()
+        autoHarpoonEnabled = not autoHarpoonEnabled
+        toggleButton.Text = autoHarpoonEnabled and "Auto-Harpoon: ON" or "Auto-Harpoon: OFF"
+    end)
+
+    local speedBox = Instance.new("TextBox")
+    speedBox.Size = UDim2.new(0,180,0,50)
+    speedBox.Position = UDim2.new(0,10,0,70)
+    speedBox.Text = tostring(tweenSpeed)
+    speedBox.PlaceholderText = "Tween Speed (50-5000)"
+    speedBox.BackgroundColor3 = Color3.fromRGB(0,170,255)
+    speedBox.TextColor3 = Color3.new(1,1,1)
+    speedBox.Font = Enum.Font.SourceSansBold
+    speedBox.TextScaled = true
+    speedBox.ClearTextOnFocus = false
+    speedBox.Parent = screenGui
+    speedBox.FocusLost:Connect(function()
+        local val = tonumber(speedBox.Text)
+        if val then tweenSpeed = math.clamp(val,50,5000) end
+        speedBox.Text = tostring(tweenSpeed)
+    end)
+
+    local execSpeedBox = Instance.new("TextBox")
+    execSpeedBox.Size = UDim2.new(0,180,0,50)
+    execSpeedBox.Position = UDim2.new(0,10,0,130)
+    execSpeedBox.Text = tostring(CARRY_TWEEN_SPEED)
+    execSpeedBox.PlaceholderText = "Execution Spot Tween Speed"
+    execSpeedBox.BackgroundColor3 = Color3.fromRGB(0,170,255)
+    execSpeedBox.TextColor3 = Color3.new(1,1,1)
+    execSpeedBox.Font = Enum.Font.SourceSansBold
+    execSpeedBox.TextScaled = true
+    execSpeedBox.ClearTextOnFocus = false
+    execSpeedBox.Parent = screenGui
+
+    local tpSpeedBox = Instance.new("TextBox")
+    tpSpeedBox.Size = UDim2.new(0,180,0,50)
+    tpSpeedBox.Position = UDim2.new(0,10,0,190)
+    tpSpeedBox.Text = tostring(tpDelay*1000)
+    tpSpeedBox.PlaceholderText = "TP Speed (0-1000 ms)"
+    tpSpeedBox.BackgroundColor3 = Color3.fromRGB(0,170,255)
+    tpSpeedBox.TextColor3 = Color3.new(1,1,1)
+    tpSpeedBox.Font = Enum.Font.SourceSansBold
+    tpSpeedBox.TextScaled = true
+    tpSpeedBox.ClearTextOnFocus = false
+    tpSpeedBox.Parent = screenGui
+
+    local delayBox = Instance.new("TextBox")
+    delayBox.Size = UDim2.new(0,180,0,50)
+    delayBox.Position = UDim2.new(0,10,0,250)
+    delayBox.Text = tostring(arrivalDelay*1000)
+    delayBox.PlaceholderText = "Arrival Delay (0-1000 ms)"
+    delayBox.BackgroundColor3 = Color3.fromRGB(0,170,255)
+    delayBox.TextColor3 = Color3.new(1,1,1)
+    delayBox.Font = Enum.Font.SourceSansBold
+    delayBox.TextScaled = true
+    delayBox.ClearTextOnFocus = false
+    delayBox.Parent = screenGui
+
+    local heightBox = Instance.new("TextBox")
+    heightBox.Size = UDim2.new(0,180,0,50)
+    heightBox.Position = UDim2.new(0,10,0,310)
+    heightBox.Text = tostring(heightOffset)
+    heightBox.PlaceholderText = "Height Offset (-100 to 100)"
+    heightBox.BackgroundColor3 = Color3.fromRGB(0,170,255)
+    heightBox.TextColor3 = Color3.new(1,1,1)
+    heightBox.Font = Enum.Font.SourceSansBold
+    heightBox.TextScaled = true
+    heightBox.ClearTextOnFocus = false
+    heightBox.Parent = screenGui
+end
+
+createGUI()
+
+player.CharacterAdded:Connect(function(charNew)
+    char = charNew
+    hrp = char:WaitForChild("HumanoidRootPart")
+    createGUI()
+end)
+
+local carryStage = "middle"
+
+while true do
+    expandHitboxes()
+
+    local carrying = char:FindFirstChild("RenderedBrainrot") ~= nil
+
+    -- NEW: Tween to middle if no brainrot
+    if not carrying then
+        local target = getClosestBrainrot()
+        if not target then
+            local middlePos = MIDDLE_POS_NO_BRAINROT
+            if (hrp.Position - middlePos).Magnitude > 2 then
+                local tweenTime = math.max((hrp.Position - middlePos).Magnitude / CARRY_TWEEN_SPEED, MIN_TWEEN_TIME)
+                local tween = TweenService:Create(hrp, TweenInfo.new(tweenTime, Enum.EasingStyle.Linear), {CFrame = CFrame.new(middlePos)})
+                tween:Play()
+                while tween.PlaybackState == Enum.PlaybackState.Playing do
+                    carrying = char:FindFirstChild("RenderedBrainrot") ~= nil
+                    target = getClosestBrainrot()
+                    if carrying or target then
+                        tween:Cancel()
+                        break
+                    end
+                    task.wait(0.05)
+                end
+            end
+        end
+    end
+
+    if carrying then
+        local middlePos = PRE_CARRY_POS
+        local finalPos = FINAL_EXECUTION_POS
+
+        if carryStage == "middle" then
+            local tweenInfo = TweenInfo.new((hrp.Position - middlePos).Magnitude / CARRY_TWEEN_SPEED, Enum.EasingStyle.Linear)
+            local tween = TweenService:Create(hrp, tweenInfo, {CFrame = CFrame.new(middlePos)})
+            tween:Play()
+            while tween.PlaybackState == Enum.PlaybackState.Playing do
+                local target = getClosestBrainrot()
+                carrying = char:FindFirstChild("RenderedBrainrot") ~= nil
+                if carrying or (target and (hrp.Position - target.Position).Magnitude <= 250) then
+                    tween:Cancel()
+                    break
+                end
+                task.wait(0.05)
+            end
+            carryStage = "final"
+
+        elseif carryStage == "final" then
+            if (hrp.Position - finalPos).Magnitude > 1 then
+                local dist = (hrp.Position - finalPos).Magnitude
+                local tweenTime = math.max(dist / CARRY_TWEEN_SPEED, MIN_TWEEN_TIME)
+                local tween = TweenService:Create(hrp, TweenInfo.new(tweenTime), {CFrame = CFrame.new(finalPos)})
+                tween:Play()
+                tween.Completed:Wait()
+            end
+            task.wait(arrivalDelay)
+            local closestExtra = getClosestExtra(finalPos)
+            if closestExtra then
+                hrp.CFrame = CFrame.new(closestExtra)
+                task.wait(tpDelay)
+                hrp.CFrame = CFrame.new(finalPos)
+            end
+        end
+    else
+        carryStage = "middle"
+    end
+
+    if autoHarpoonEnabled then
+        local target = getClosestBrainrot()
+        if target and target.Parent then
+            local targetPos = target.Position + Vector3.new(55, heightOffset, 0)
+            local distance = (hrp.Position - targetPos).Magnitude
+            if distance > 250 then
+                local tweenTime = math.max(distance / tweenSpeed, MIN_TWEEN_TIME)
+                local tween = TweenService:Create(hrp, TweenInfo.new(tweenTime), {CFrame = CFrame.new(targetPos)})
+                tween:Play()
+            end
+            local now = tick()
+            if (hrp.Position - target.Position).Magnitude <= fireRange and now - lastHarpoonTime >= HARPOON_COOLDOWN then
+                lastHarpoonTime = now
+                pcall(function()
+                    harpoonRemote:FireServer(target.Position)
+                end)
+            end
+        end
+    end
+
+    task.wait(ARRIVAL_THRESHOLD)
+end
