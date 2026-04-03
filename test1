@@ -3114,9 +3114,6 @@ local function isDeveloper(username)
 end
 
 local function applyPremiumLabel(targetPlayer)
-	-- SKIP applying label to yourself
-	if targetPlayer == player then return end
-	
 	local char = targetPlayer.Character
 	if not char then return end
 	local head = char:FindFirstChild("Head")
@@ -3189,7 +3186,9 @@ end
 
 local function applyAllPremiumLabels()
 	for _, p in ipairs(Players:GetPlayers()) do
-		pcall(applyPremiumLabel, p)
+		if p ~= player then
+			pcall(applyPremiumLabel, p)
+		end
 	end
 end
 
@@ -3224,6 +3223,7 @@ end)
 
 -- Pasang label ke player yang join setelah fetch selesai
 Players.PlayerAdded:Connect(function(p)
+	if p == player then return end
 	p.CharacterAdded:Connect(function()
 		task.wait(1)
 		pcall(applyPremiumLabel, p)
