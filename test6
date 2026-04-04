@@ -925,7 +925,7 @@ local panel = Instance.new("Frame")
 panel.Name             = "Panel"
 panel.Size             = UDim2.new(0, 268, 0, 320)
 panel.Position         = UDim2.new(0, 16, 0.5, -160)
-panel.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+panel.BackgroundColor3 = Color3.fromRGB(128, 128, 128)
 panel.BorderSizePixel  = 0
 panel.Active           = true
 panel.Draggable        = true
@@ -934,7 +934,7 @@ panel.Parent           = screenGui
 
 do
     local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,10); c.Parent = panel
-    local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(80,200,255); s.Thickness = 1.5; s.Parent = panel
+    local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(255, 0, 0); s.Thickness = 1.5; s.Parent = panel
 end
 
 -- ── Minimized Pill (tampil saat di-minimize) ──────
@@ -960,7 +960,7 @@ local miniIcon = Instance.new("TextLabel")
 miniIcon.Size               = UDim2.new(0,28,1,0)
 miniIcon.Position           = UDim2.new(0,8,0,0)
 miniIcon.BackgroundTransparency = 1
-miniIcon.Text               = "🏪"
+miniIcon.Text               = ""
 miniIcon.TextSize           = 16
 miniIcon.Font               = Enum.Font.Gotham
 miniIcon.ZIndex             = 31
@@ -971,7 +971,7 @@ miniText.Size               = UDim2.new(1,-40,1,0)
 miniText.Position           = UDim2.new(0,34,0,0)
 miniText.BackgroundTransparency = 1
 miniText.Text               = "Velocity x Zake"
-miniText.TextColor3         = Color3.fromRGB(80,200,255)
+miniText.TextColor3         = Color3.fromRGB(255, 0, 0)
 miniText.TextSize           = 13
 miniText.Font               = Enum.Font.GothamBold
 miniText.TextXAlignment     = Enum.TextXAlignment.Left
@@ -1003,7 +1003,7 @@ local titleLabel = Instance.new("TextLabel")
 titleLabel.Size               = UDim2.new(1,-72,1,0)
 titleLabel.Position           = UDim2.new(0,10,0,0)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text               = "🏪  Velocity x Zake, plaza"
+titleLabel.Text               = "Velocity x Zake Popcorn"
 titleLabel.TextColor3         = Color3.fromRGB(80,200,255)
 titleLabel.TextSize           = 13
 titleLabel.Font               = Enum.Font.GothamBold
@@ -1190,7 +1190,7 @@ end
 -- ================================================
 local autoTimingLabel = makeLabel("Auto Timing Ring")
 autoTimingLabel.Visible = false   -- HIDDEN
-local _, timingToggleBtn, timingToggleKnob = makeToggleRow("Aktifkan Auto Hit Ring")
+local _, timingToggleBtn, timingToggleKnob = makeToggleRow("Auto Popcorn")
 -- Default ON
 setToggleVisual(timingToggleBtn, timingToggleKnob, true)
 
@@ -1248,7 +1248,7 @@ do
         btn.BackgroundColor3 = preset.color
         btn.Text             = preset.label
         btn.TextColor3       = Color3.fromRGB(255, 255, 255)
-        btn.TextSize         = 11
+        btn.TextSize         = 15
         btn.Font             = Enum.Font.Gotham
         btn.AutoButtonColor  = false
         btn.BorderSizePixel  = 0
