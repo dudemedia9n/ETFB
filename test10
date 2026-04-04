@@ -1028,7 +1028,7 @@ do
         local l = Instance.new("Frame")
         l.Size             = UDim2.new(0,14,0,2)
         l.Position         = UDim2.new(0.5,-7,0.5,-1)
-        l.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
+        l.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
         l.BorderSizePixel  = 0
         l.Rotation         = rot
         l.ZIndex           = 6
