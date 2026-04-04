@@ -1,0 +1,2330 @@
+-- AutoMinigame LocalScript
+-- Pasang di: StarterPlayerScripts atau StarterGui
+
+local Players          = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+
+local player       = Players.LocalPlayer
+local playerGui    = player:WaitForChild("PlayerGui")
+local myDisplayName = player.DisplayName
+local myUsername    = player.Name
+
+-- ================================================
+-- DEBUG CONFIG
+-- ================================================
+local DEBUG = false   -- true = tulis ke console | false = silent
+
+-- ================================================
+-- CONSOLE BUFFER — tangkap semua print/warn
+-- ================================================
+local consoleBuffer  = {}
+local MAX_LINES      = 300   -- batas buffer
+
+local function bufferLine(prefix, ...)
+    local parts = {}
+    for _, v in ipairs({...}) do
+        table.insert(parts, tostring(v))
+    end
+    local line = prefix .. table.concat(parts, "  ")
+    table.insert(consoleBuffer, line)
+    if #consoleBuffer > MAX_LINES then
+        table.remove(consoleBuffer, 1)
+    end
+end
+
+-- Simpan original
+local _origPrint = print
+local _origWarn  = warn
+
+-- Override: tulis ke console hanya kalau DEBUG = true
+print = function(...)
+    bufferLine("", ...)
+    if DEBUG then _origPrint(...) end
+end
+warn = function(...)
+    bufferLine("[WARN] ", ...)
+    if DEBUG then _origWarn(...) end
+end
+
+-- ================================================
+-- KONFIGURASI
+-- ================================================
+local CONFIG = {
+    MINIGAME_TABLES_PATH = "GameObjects.PlaceSpecific.trade_plaza.MinigameTables",
+    AUTO_PLAY_INTERVAL   = 1.5,
+    OVERLAY_DISTANCE     = 200,
+    OVERLAY_STUDS        = 15,
+    OVERLAY_PX           = 150,
+    SCAN_INTERVAL        = 0.5,
+
+    -- ── Auto Timing Ring ─────────────────────────
+    STATE_REMOTE_PATH = "ReplicatedStorage.__ReplicatorInternal.RemoteEvent",
+    HIT_REMOTE_NAME   = "RE/Minigame/MinigameGameAction",
+    HIT_ACTION        = "AttemptPop",
+
+    TARGET_SCALE    = 0.53,
+    TIMING_OFFSET   = 0.02,
+    MIN_RING_DURATION = 0.1,   -- turunkan agar ring pendek tetap ditangkap
+}
+
+-- ================================================
+-- HELPER
+-- ================================================
+local function getTablesFolder()
+    local ws   = game:GetService("Workspace")
+    local path = CONFIG.MINIGAME_TABLES_PATH:split(".")
+    local cur  = ws
+    for _, part in ipairs(path) do
+        cur = cur and cur:FindFirstChild(part)
+    end
+    return cur
+end
+
+local function getAllTables()
+    local folder = getTablesFolder()
+    if not folder then return {} end
+    local t = {}
+    for _, child in ipairs(folder:GetChildren()) do
+        table.insert(t, child)
+    end
+    return t
+end
+
+-- ================================================
+-- ANTI LAG & FPS BOOST  (jalan 1x saat startup)
+-- ================================================
+task.spawn(function()
+    local RS  = game:GetService("RunService")
+    local Lighting = game:GetService("Lighting")
+    local ws   = game:GetService("Workspace")
+    local StarterGui = game:GetService("StarterGui")
+
+    -- ── 1. Rendering Settings ─────────────────────
+    local Settings = settings()
+    pcall(function()
+        Settings.Rendering.QualityLevel       = Enum.QualityLevel.Level01
+        Settings.Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Disabled
+        Settings.Rendering.EagerBulkExecution  = true
+    end)
+
+    -- ── 2. Lighting ───────────────────────────────
+    pcall(function()
+        Lighting.GlobalShadows     = false
+        Lighting.FogEnd            = 10e8
+        Lighting.FogStart          = 10e8
+        -- matikan teknologi lighting berat
+        for _, effect in ipairs(Lighting:GetChildren()) do
+            if effect:IsA("BlurEffect")
+                or effect:IsA("ColorCorrectionEffect")
+                or effect:IsA("SunRaysEffect")
+                or effect:IsA("BloomEffect")
+                or effect:IsA("DepthOfFieldEffect") then
+                effect.Enabled = false
+            end
+        end
+    end)
+
+    -- ── 3. Workspace ──────────────────────────────
+    pcall(function()
+        ws.StreamingEnabled     = false   -- matikan streaming jika bisa
+        ws.Terrain.WaterWaveSize   = 0
+        ws.Terrain.WaterWaveSpeed  = 0
+        ws.Terrain.WaterReflectance = 0
+        ws.Terrain.WaterTransparency = 1
+    end)
+
+    -- ── 4. Hapus particle & efek berat di workspace ─
+    pcall(function()
+        for _, obj in ipairs(ws:GetDescendants()) do
+            if obj:IsA("ParticleEmitter")
+                or obj:IsA("Trail")
+                or obj:IsA("SelectionBox")
+                or obj:IsA("BoxHandleAdornment") then
+                pcall(function() obj.Enabled = false end)
+                pcall(function() obj.Rate    = 0     end)
+            end
+            -- matikan PointLight & SpotLight berat
+            if obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
+                pcall(function() obj.Enabled = false end)
+            end
+        end
+    end)
+
+    -- ── 5. Paksa Garbage Collection ───────────────
+    pcall(function()
+        local gc = gcinfo
+        if gc then
+            for _ = 1, 3 do
+                collectgarbage("collect")
+                task.wait()
+            end
+        end
+    end)
+
+    -- ── 6. Matikan animasi karakter player lain ───
+    pcall(function()
+        local Players = game:GetService("Players")
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= player and p.Character then
+                for _, obj in ipairs(p.Character:GetDescendants()) do
+                    if obj:IsA("Animator") then
+                        pcall(function() obj:GetPlayingAnimationTracks() end)
+                    end
+                    if obj:IsA("ParticleEmitter") or obj:IsA("Trail") then
+                        pcall(function() obj.Enabled = false; obj.Rate = 0 end)
+                    end
+                end
+            end
+        end
+        -- Lakukan juga untuk player yang join setelah ini
+        Players.PlayerAdded:Connect(function(p2)
+            if p2 == player then return end
+            p2.CharacterAdded:Connect(function(char)
+                task.wait(1)
+                for _, obj in ipairs(char:GetDescendants()) do
+                    if obj:IsA("ParticleEmitter") or obj:IsA("Trail") then
+                        pcall(function() obj.Enabled = false; obj.Rate = 0 end)
+                    end
+                end
+            end)
+        end)
+    end)
+
+    -- ── Hapus UI elements yang tidak diperlukan ────
+    task.wait(2)  -- tunggu PlayerGui fully loaded
+    local togglesPath = playerGui:FindFirstChild("Menus")
+        and playerGui.Menus:FindFirstChild("Toggles")
+    if togglesPath then
+        local toRemove = {
+            "Invite", "Rebirth", "Shop", "VIP",
+            "Trade", "IndexLong", "Index"
+        }
+        for _, name in ipairs(toRemove) do
+            local obj = togglesPath:FindFirstChild(name)
+            if obj then
+                obj:Destroy()
+            end
+        end
+    end
+
+    -- ── Hapus workspace objects berat ─────────────
+    local ws = game:GetService("Workspace")
+    local go  = ws:FindFirstChild("GameObjects")
+
+    -- Hapus langsung
+    local directRemove = {
+        go and go:FindFirstChild("Booths"),
+        go and go:FindFirstChild("PlaceSpecific")
+            and go.PlaceSpecific:FindFirstChild("trade_plaza")
+            and go.PlaceSpecific.trade_plaza:FindFirstChild("Leaderboards"),
+        go and go:FindFirstChild("PlaceSpecific")
+            and go.PlaceSpecific:FindFirstChild("trade_plaza")
+            and go.PlaceSpecific.trade_plaza:FindFirstChild("SpawnMachines"),
+        go and go:FindFirstChild("PlaceSpecific")
+            and go.PlaceSpecific:FindFirstChild("trade_plaza")
+            and go.PlaceSpecific.trade_plaza:FindFirstChild("EventTimers"),
+        ws:FindFirstChild("LimitedShop"),
+    }
+    for _, obj in ipairs(directRemove) do
+        if obj then
+            local n = obj.Name
+            pcall(function() obj:Destroy() end)
+        end
+    end
+
+    -- Hapus isi TradePlazaMap berdasarkan nama
+    local plazaMap = go
+        and go:FindFirstChild("PlaceSpecific")
+        and go.PlaceSpecific:FindFirstChild("trade_plaza")
+        and go.PlaceSpecific.trade_plaza:FindFirstChild("TradePlazaMap")
+
+    if plazaMap then
+        local mapRemove = {
+            "Barrel","Bush","Bench","Cloud","Crate","Crown",
+            "Fence","Flower","Grass","Island","Lantern","Model",
+            "Obby","ObbyCopies","Patch","PlazaPortal","PoolTable",
+            "Rock","Sea","Tree","Tree1","TsunamiWaves","Walls",
+            "light pole",
+        }
+        local mapSet = {}
+        for _, n in ipairs(mapRemove) do mapSet[n] = true end
+
+        for _, child in ipairs(plazaMap:GetChildren()) do
+            if mapSet[child.Name] then
+                pcall(function() child:Destroy() end)
+            end
+        end
+    end
+end)
+
+-- ================================================
+-- GUI
+-- ================================================
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name           = "AutoMinigameUI"
+screenGui.ResetOnSpawn   = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent         = playerGui
+
+-- Panel — fixed size, bisa di-resize
+local panel = Instance.new("Frame")
+panel.Name             = "Panel"
+panel.Size             = UDim2.new(0, 268, 0, 120)
+panel.Position         = UDim2.new(0, 16, 0.5, -160)
+panel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+panel.BorderSizePixel  = 0
+panel.Active           = true
+panel.Draggable        = true
+panel.ClipsDescendants = true
+panel.Parent           = screenGui
+
+do
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,10); c.Parent = panel
+    local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(255, 0, 0); s.Thickness = 1.5; s.Parent = panel
+end
+
+-- ── Minimized Pill (tampil saat di-minimize) ──────
+local miniPill = Instance.new("TextButton")
+miniPill.Name             = "MiniPill"
+miniPill.Size             = UDim2.new(0, 148, 0, 34)
+miniPill.Position         = UDim2.new(0, 16, 0.5, -17)
+miniPill.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+miniPill.Text             = ""
+miniPill.AutoButtonColor  = false
+miniPill.BorderSizePixel  = 0
+miniPill.Active           = true
+miniPill.Draggable        = true
+miniPill.Visible          = false
+miniPill.ZIndex           = 30
+miniPill.Parent           = screenGui
+do
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,7); c.Parent = miniPill
+    local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(80,200,255); s.Thickness = 1.5; s.Parent = miniPill
+end
+
+local miniIcon = Instance.new("TextLabel")
+miniIcon.Size               = UDim2.new(0,28,1,0)
+miniIcon.Position           = UDim2.new(0,8,0,0)
+miniIcon.BackgroundTransparency = 1
+miniIcon.Text               = ""
+miniIcon.TextSize           = 16
+miniIcon.Font               = Enum.Font.Gotham
+miniIcon.ZIndex             = 31
+miniIcon.Parent             = miniPill
+
+local miniText = Instance.new("TextLabel")
+miniText.Size               = UDim2.new(1,-40,1,0)
+miniText.Position           = UDim2.new(0,34,0,0)
+miniText.BackgroundTransparency = 1
+miniText.Text               = "Velocity x Zake"
+miniText.TextColor3         = Color3.fromRGB(255, 0, 0)
+miniText.TextSize           = 13
+miniText.Font               = Enum.Font.GothamBold
+miniText.TextXAlignment     = Enum.TextXAlignment.Left
+miniText.ZIndex             = 31
+miniText.Parent             = miniPill
+
+-- Klik pill → restore panel
+miniPill.MouseButton1Click:Connect(function()
+    miniPill.Visible = false
+    panel.Visible    = true
+end)
+
+-- Header
+local header = Instance.new("Frame")
+header.Size             = UDim2.new(1,0,0,40)
+header.BackgroundColor3 = Color3.fromRGB(25,25,35)
+header.BorderSizePixel  = 0
+header.Parent           = panel
+
+do
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,10); c.Parent = header
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1,0,0,12); f.Position = UDim2.new(0,0,1,-12)
+    f.BackgroundColor3 = Color3.fromRGB(25,25,35); f.BorderSizePixel = 0; f.Parent = header
+end
+
+-- Title
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size               = UDim2.new(1,-72,1,0)
+titleLabel.Position           = UDim2.new(0,10,0,0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text               = "Velocity x Zake"
+titleLabel.TextColor3         = Color3.fromRGB(255, 0, 0)
+titleLabel.TextSize           = 13
+titleLabel.Font               = Enum.Font.GothamBold
+titleLabel.TextXAlignment     = Enum.TextXAlignment.Left
+titleLabel.Parent             = header
+
+-- Close Button (X pakai ImageLabel agar tidak jadi kotak)
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size             = UDim2.new(0,26,0,26)
+closeBtn.Position         = UDim2.new(1,-32,0.5,-13)
+closeBtn.BackgroundColor3 = Color3.fromRGB(180,50,50)
+closeBtn.Text             = ""
+closeBtn.AutoButtonColor  = false
+closeBtn.BorderSizePixel  = 0
+closeBtn.ZIndex           = 5
+closeBtn.Parent           = header
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,6); c.Parent = closeBtn end
+
+-- X dibuat dari dua garis (Frame) agar pasti kerender
+do
+    local function mkLine(rot)
+        local l = Instance.new("Frame")
+        l.Size             = UDim2.new(0,14,0,2)
+        l.Position         = UDim2.new(0.5,-7,0.5,-1)
+        l.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        l.BorderSizePixel  = 0
+        l.Rotation         = rot
+        l.ZIndex           = 6
+        l.Parent           = closeBtn
+        Instance.new("UICorner", l).CornerRadius = UDim.new(1,0)
+    end
+    mkLine(45)
+    mkLine(-45)
+end
+
+closeBtn.MouseEnter:Connect(function() closeBtn.BackgroundColor3 = Color3.fromRGB(220,60,60) end)
+closeBtn.MouseLeave:Connect(function() closeBtn.BackgroundColor3 = Color3.fromRGB(180,50,50) end)
+
+-- ── Scroll Body ───────────────────────────────────
+-- Isi panel ada di sini, bisa di-scroll
+local scrollBody = Instance.new("ScrollingFrame")
+scrollBody.Name                 = "ScrollBody"
+scrollBody.Position             = UDim2.new(0, 0, 0, 40)     -- di bawah header
+scrollBody.Size                 = UDim2.new(1, 0, 1, -52)    -- sisakan 12px untuk resize handle
+scrollBody.BackgroundTransparency = 1
+scrollBody.BorderSizePixel      = 0
+scrollBody.ScrollBarThickness   = 4
+scrollBody.ScrollBarImageColor3 = Color3.fromRGB(80,200,255)
+scrollBody.CanvasSize           = UDim2.new(0, 0, 0, 0)      -- di-update otomatis
+scrollBody.AutomaticCanvasSize  = Enum.AutomaticSize.Y
+scrollBody.Parent               = panel
+
+do
+    local l = Instance.new("UIListLayout")
+    l.Padding = UDim.new(0,8)
+    l.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    l.SortOrder = Enum.SortOrder.LayoutOrder
+    l.Parent = scrollBody
+
+    local p = Instance.new("UIPadding")
+    p.PaddingTop    = UDim.new(0,10)
+    p.PaddingLeft   = UDim.new(0,10)
+    p.PaddingRight  = UDim.new(0,10)
+    p.PaddingBottom = UDim.new(0,10)
+    p.Parent        = scrollBody
+end
+
+-- ── Resize Handle (pojok kanan bawah) ─────────────
+local resizeHandle = Instance.new("TextButton")
+resizeHandle.Name             = "ResizeHandle"
+resizeHandle.Size             = UDim2.new(0, 20, 0, 12)
+resizeHandle.Position         = UDim2.new(1, -20, 1, -12)
+resizeHandle.BackgroundColor3 = Color3.fromRGB(60,70,90)
+resizeHandle.Text             = "⠿"
+resizeHandle.TextColor3       = Color3.fromRGB(100,140,180)
+resizeHandle.TextSize         = 10
+resizeHandle.Font             = Enum.Font.Gotham
+resizeHandle.AutoButtonColor  = false
+resizeHandle.BorderSizePixel  = 0
+resizeHandle.ZIndex           = 6
+resizeHandle.Parent           = panel
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,4); c.Parent = resizeHandle end
+resizeHandle.MouseEnter:Connect(function() resizeHandle.BackgroundColor3 = Color3.fromRGB(80,100,130) end)
+resizeHandle.MouseLeave:Connect(function() resizeHandle.BackgroundColor3 = Color3.fromRGB(60,70,90) end)
+
+-- Logika resize drag
+local resizing        = false
+local resizeStartMouse = Vector2.new()
+local resizeStartSize  = Vector2.new()
+local MIN_W, MAX_W    = 220, 600
+local MIN_H, MAX_H    = 200, 800
+
+resizeHandle.MouseButton1Down:Connect(function()
+    resizing         = true
+    resizeStartMouse = UserInputService:GetMouseLocation()
+    resizeStartSize  = Vector2.new(panel.AbsoluteSize.X, panel.AbsoluteSize.Y)
+end)
+
+UserInputService.InputChanged:Connect(function(inp)
+    if resizing and inp.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = UserInputService:GetMouseLocation() - resizeStartMouse
+        local newW  = math.clamp(resizeStartSize.X + delta.X, MIN_W, MAX_W)
+        local newH  = math.clamp(resizeStartSize.Y + delta.Y, MIN_H, MAX_H)
+        panel.Size  = UDim2.new(0, newW, 0, newH)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+        resizing = false
+    end
+end)
+
+-- Helper: section label (parent ke scrollBody)
+local function makeLabel(text)
+    local l = Instance.new("TextLabel")
+    l.Size = UDim2.new(1,0,0,16); l.BackgroundTransparency = 1
+    l.Text = text; l.TextColor3 = Color3.fromRGB(140,160,180)
+    l.TextSize = 11; l.Font = Enum.Font.Gotham
+    l.TextXAlignment = Enum.TextXAlignment.Left; l.Parent = scrollBody
+    return l
+end
+
+-- Helper: toggle row (parent ke scrollBody)
+local function makeToggleRow(labelText)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1,0,0,32); row.BackgroundColor3 = Color3.fromRGB(25,25,35)
+    row.BorderSizePixel = 0; row.Parent = scrollBody
+    do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,7); c.Parent = row end
+
+    local txt = Instance.new("TextLabel")
+    txt.Size = UDim2.new(1,-50,1,0); txt.Position = UDim2.new(0,10,0,0)
+    txt.BackgroundTransparency = 1; txt.Text = labelText
+    txt.TextColor3 = Color3.fromRGB(200,210,220); txt.TextSize = 12
+    txt.Font = Enum.Font.Gotham; txt.TextXAlignment = Enum.TextXAlignment.Left
+    txt.Parent = row
+
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0,42,0,22); btn.Position = UDim2.new(1,-48,0.5,-11)
+    btn.BackgroundColor3 = Color3.fromRGB(60,60,70)
+    btn.Text = ""; btn.AutoButtonColor = false; btn.Parent = row
+    do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(1,0); c.Parent = btn end
+
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0,16,0,16); knob.Position = UDim2.new(0,3,0.5,-8)
+    knob.BackgroundColor3 = Color3.fromRGB(120,130,140); knob.BorderSizePixel = 0; knob.Parent = btn
+    do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(1,0); c.Parent = knob end
+
+    return row, btn, knob
+end
+
+local function setToggleVisual(btn, knob, on)
+    btn.BackgroundColor3  = on and Color3.fromRGB(30,160,100) or Color3.fromRGB(60,60,70)
+    knob.Position         = on and UDim2.new(1,-19,0.5,-8) or UDim2.new(0,3,0.5,-8)
+    knob.BackgroundColor3 = on and Color3.fromRGB(220,255,235) or Color3.fromRGB(120,130,140)
+end
+
+-- ================================================
+-- SECTION: Auto Timing Ring  ← PALING ATAS
+-- ================================================
+local autoTimingLabel = makeLabel("Auto Timing Ring")
+autoTimingLabel.Visible = false   -- HIDDEN
+local _, timingToggleBtn, timingToggleKnob = makeToggleRow("Auto Popcorn")
+-- Default ON
+setToggleVisual(timingToggleBtn, timingToggleKnob, true)
+
+-- Info box: ringDuration + status hit
+local timingInfoBox = Instance.new("Frame")
+timingInfoBox.Size = UDim2.new(1,0,0,112); timingInfoBox.BackgroundColor3 = Color3.fromRGB(20,20,28)
+timingInfoBox.BorderSizePixel = 0; timingInfoBox.Parent = scrollBody
+timingInfoBox.Visible = false   -- HIDDEN
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,7); c.Parent = timingInfoBox end
+
+local function makeInfoRow(parent, label, yPos)
+    local nl = Instance.new("TextLabel")
+    nl.Size = UDim2.new(0,80,0,18); nl.Position = UDim2.new(0,10,0,yPos)
+    nl.BackgroundTransparency = 1; nl.Text = label
+    nl.TextColor3 = Color3.fromRGB(100,120,150); nl.TextSize = 11
+    nl.Font = Enum.Font.Gotham; nl.TextXAlignment = Enum.TextXAlignment.Left; nl.Parent = parent
+    local vl = Instance.new("TextLabel")
+    vl.Size = UDim2.new(1,-95,0,18); vl.Position = UDim2.new(0,90,0,yPos)
+    vl.BackgroundTransparency = 1; vl.Text = "—"
+    vl.TextColor3 = Color3.fromRGB(200,220,240); vl.TextSize = 11
+    vl.Font = Enum.Font.GothamBold; vl.TextXAlignment = Enum.TextXAlignment.Left; vl.Parent = parent
+    return vl
+end
+
+local tRingDurVal   = makeInfoRow(timingInfoBox, "RingDur",   6)
+local tCountdownVal = makeInfoRow(timingInfoBox, "Countdown", 26)
+local tLastHitVal   = makeInfoRow(timingInfoBox, "Last Hit",  46)
+local tCaptureVal   = makeInfoRow(timingInfoBox, "Capture",   66)
+local tModeVal      = makeInfoRow(timingInfoBox, "Mode",      86)
+
+-- Forward-declare agar bisa diakses dari dalam preset click handler
+local targetScaleBox, timingOffsetBox
+-- Preset Buttons: Perfect / Great / Good
+local presetRow = Instance.new("Frame")
+presetRow.Size                = UDim2.new(1,0,0,40)
+presetRow.BackgroundTransparency = 1
+presetRow.BorderSizePixel     = 0
+presetRow.Parent              = scrollBody
+
+do
+    local layout = Instance.new("UIListLayout")
+    layout.FillDirection       = Enum.FillDirection.Horizontal
+    layout.Padding             = UDim.new(0,6)
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    layout.VerticalAlignment   = Enum.VerticalAlignment.Center
+    layout.Parent              = presetRow
+
+    local PRESETS = {}
+
+    for _, preset in ipairs(PRESETS) do
+        local btn = Instance.new("TextButton")
+        btn.Size             = UDim2.new(0, 65, 0, 34)
+        btn.BackgroundColor3 = preset.color
+        btn.Text             = preset.label
+        btn.TextColor3       = Color3.fromRGB(255, 255, 255)
+        btn.TextSize         = 15
+        btn.Font             = Enum.Font.Gotham
+        btn.AutoButtonColor  = false
+        btn.BorderSizePixel  = 0
+        btn.Parent           = presetRow
+        
+        do
+            local c = Instance.new("UICorner")
+            c.CornerRadius = UDim.new(0, 8)
+            c.Parent = btn
+            
+            local s = Instance.new("UIStroke")
+            s.Color = Color3.fromRGB(255, 255, 255)
+            s.Thickness = 1.5
+            s.Parent = btn
+        end
+        
+        btn.MouseEnter:Connect(function()
+            btn.BackgroundColor3 = Color3.new(
+                preset.color.R * 1.2,
+                preset.color.G * 1.2,
+                preset.color.B * 1.2
+            )
+            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        end)
+        
+        btn.MouseLeave:Connect(function()
+            btn.BackgroundColor3 = preset.color
+            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        end)
+        
+        btn.MouseButton1Down:Connect(function()
+            btn.BackgroundColor3 = Color3.new(
+                preset.color.R * 0.8,
+                preset.color.G * 0.8,
+                preset.color.B * 0.8
+            )
+        end)
+        
+        btn.MouseButton1Up:Connect(function()
+            btn.BackgroundColor3 = Color3.new(
+                preset.color.R * 1.2,
+                preset.color.G * 1.2,
+                preset.color.B * 1.2
+            )
+        end)
+        
+        btn.MouseButton1Click:Connect(function()
+            -- Update CONFIG
+            CONFIG.TARGET_SCALE  = preset.scale
+            CONFIG.TIMING_OFFSET = preset.offset
+            
+            -- Update TextBox values (supaya keliatan berubah di UI)
+            if targetScaleBox  then targetScaleBox.Text  = tostring(preset.scale)  end
+            if timingOffsetBox then timingOffsetBox.Text = tostring(preset.offset) end
+            
+            -- Update label Mode
+            tModeVal.Text       = preset.label
+            tModeVal.TextColor3 = preset.color
+        end)
+    end
+end
+
+-- ── Mode Akurat (Auto-Tune) toggle ───────────────
+local accurateModeOn = false
+local scSamples      = {}   -- buffer sc dari Perfect hits
+local SC_BUF_MAX     = 6    -- evaluasi setelah 6 sample terkumpul
+local TUNE_GAIN      = 0.12 -- seberapa agresif koreksi per evaluasi
+
+local accurateToggleRow, accurateToggleBtn, accurateToggleKnob = makeToggleRow("🎯  Mode Akurat (Auto-Tune Offset)")
+accurateToggleRow.Visible = false   -- HIDDEN
+setToggleVisual(accurateToggleBtn, accurateToggleKnob, false)
+
+accurateToggleBtn.MouseButton1Click:Connect(function()
+    accurateModeOn = not accurateModeOn
+    scSamples      = {}  -- reset buffer saat toggle
+    setToggleVisual(accurateToggleBtn, accurateToggleKnob, accurateModeOn)
+    if accurateModeOn then
+        tModeVal.Text       = "Auto-Tune ON"
+        tModeVal.TextColor3 = Color3.fromRGB(80,220,255)
+    else
+        tModeVal.Text       = "Auto-Tune OFF"
+        tModeVal.TextColor3 = Color3.fromRGB(140,160,180)
+    end
+end)
+
+-- ── Auto-Tune Skor (Hill-Climb Accuracy) toggle ──
+local scoreTuneOn   = false
+local accSamples    = {}    -- buffer accuracy% dari Perfect hits
+local ACC_BUF_MAX   = 8    -- evaluasi setelah 8 sample
+local SCORE_STEP    = 0.0008 -- step offset per evaluasi
+local lastAvgAcc    = 0    -- avg accuracy evaluasi sebelumnya
+local scoreTuneDir  = -1   -- arah koreksi: -1 = kurangi offset (fire lebih awal), +1 = tambah
+
+-- Forward-declare aggro vars agar bisa diakses mutual-exclusion di smooth toggle
+local scoreTuneAggroOn, aggroSamples, aggroLastAvgAcc, aggroDir
+local scoreTuneAggroBtn, scoreTuneAggroKnob
+local AGGRO_BUF_MAX = 4
+local AGGRO_STEP    = 0.0012
+
+local scoreTuneRow, scoreTuneBtn, scoreTuneKnob = makeToggleRow("📈  Auto-Tune Skor (8 sample / smooth)")
+scoreTuneRow.Visible = false   -- HIDDEN
+setToggleVisual(scoreTuneBtn, scoreTuneKnob, false)
+
+scoreTuneBtn.MouseButton1Click:Connect(function()
+    scoreTuneOn  = not scoreTuneOn
+    accSamples   = {}
+    lastAvgAcc   = 0
+    scoreTuneDir = -1
+    setToggleVisual(scoreTuneBtn, scoreTuneKnob, scoreTuneOn)
+    if scoreTuneOn then
+        -- matikan mode agresif kalau aktif
+        if scoreTuneAggroOn then
+            scoreTuneAggroOn = false
+            aggroSamples     = {}
+            aggroLastAvgAcc  = 0
+            aggroDir         = -1
+            setToggleVisual(scoreTuneAggroBtn, scoreTuneAggroKnob, false)
+        end
+        tModeVal.Text       = "Score-Tune ON"
+        tModeVal.TextColor3 = Color3.fromRGB(255,210,60)
+    else
+        tModeVal.Text       = "Score-Tune OFF"
+        tModeVal.TextColor3 = Color3.fromRGB(140,160,180)
+    end
+end)
+
+-- ── ScoreTune Agresif ─────────────────────────────
+scoreTuneAggroOn  = false
+aggroSamples      = {}
+aggroLastAvgAcc   = 0
+aggroDir          = -1
+
+local _discardAggroRow; _discardAggroRow, scoreTuneAggroBtn, scoreTuneAggroKnob = makeToggleRow("⚡  Auto-Tune Skor Agresif (4 sample / cepat)")
+_discardAggroRow.Visible = false   -- HIDDEN
+setToggleVisual(scoreTuneAggroBtn, scoreTuneAggroKnob, false)
+
+scoreTuneAggroBtn.MouseButton1Click:Connect(function()
+    scoreTuneAggroOn = not scoreTuneAggroOn
+    aggroSamples     = {}
+    aggroLastAvgAcc  = 0
+    aggroDir         = -1
+    setToggleVisual(scoreTuneAggroBtn, scoreTuneAggroKnob, scoreTuneAggroOn)
+    if scoreTuneAggroOn then
+        -- matikan mode smooth kalau aktif
+        if scoreTuneOn then
+            scoreTuneOn  = false
+            accSamples   = {}
+            lastAvgAcc   = 0
+            scoreTuneDir = -1
+            setToggleVisual(scoreTuneBtn, scoreTuneKnob, false)
+        end
+        tModeVal.Text       = "Aggro-Tune ON"
+        tModeVal.TextColor3 = Color3.fromRGB(255,120,60)
+    else
+        tModeVal.Text       = "Aggro-Tune OFF"
+        tModeVal.TextColor3 = Color3.fromRGB(140,160,180)
+    end
+end)
+
+-- Tombol Capture Hit
+local captureBtn = Instance.new("TextButton")
+captureBtn.Size             = UDim2.new(1,0,0,32)
+captureBtn.BackgroundColor3 = Color3.fromRGB(140,80,20)
+captureBtn.Text             = "🎯  Capture Hit Remote"
+captureBtn.TextColor3       = Color3.fromRGB(255,230,180)
+captureBtn.TextSize         = 12
+captureBtn.Font             = Enum.Font.GothamBold
+captureBtn.AutoButtonColor  = false
+captureBtn.BorderSizePixel  = 0
+captureBtn.Parent           = scrollBody
+captureBtn.Visible          = false   -- HIDDEN
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,8); c.Parent = captureBtn end
+
+-- Row: Reset Player Index
+local resetIdxBtn = Instance.new("TextButton")
+resetIdxBtn.Size             = UDim2.new(1,0,0,28)
+resetIdxBtn.BackgroundColor3 = Color3.fromRGB(50,50,70)
+resetIdxBtn.Text             = "🔄  Reset Player Index  (p#?)"
+resetIdxBtn.TextColor3       = Color3.fromRGB(160,170,200)
+resetIdxBtn.TextSize         = 11
+resetIdxBtn.Font             = Enum.Font.Gotham
+resetIdxBtn.AutoButtonColor  = false
+resetIdxBtn.BorderSizePixel  = 0
+resetIdxBtn.Parent           = scrollBody
+resetIdxBtn.Visible          = false   -- HIDDEN
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,7); c.Parent = resetIdxBtn end
+resetIdxBtn.MouseEnter:Connect(function() resetIdxBtn.BackgroundColor3 = Color3.fromRGB(70,70,100) end)
+resetIdxBtn.MouseLeave:Connect(function() resetIdxBtn.BackgroundColor3 = Color3.fromRGB(50,50,70) end)
+
+-- ── Timing Inputs ─────────────────────────────────
+local timingSettingsLabel = makeLabel("Timing Settings")
+timingSettingsLabel.Visible = false   -- HIDDEN
+
+-- Helper: buat 1 input row dengan label + TextBox + tombol Apply
+local function makeTimingInput(labelText, defaultVal, hintText, onApply)
+    local row = Instance.new("Frame")
+    row.Size             = UDim2.new(1,0,0,56)
+    row.BackgroundColor3 = Color3.fromRGB(18,18,28)
+    row.BorderSizePixel  = 0
+    row.Parent           = scrollBody
+    do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,7); c.Parent = row end
+    do local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(50,55,75); s.Thickness = 1; s.Parent = row end
+
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.Size               = UDim2.new(1,-12,0,18)
+    nameLbl.Position           = UDim2.new(0,10,0,4)
+    nameLbl.BackgroundTransparency = 1
+    nameLbl.Text               = labelText
+    nameLbl.TextColor3         = Color3.fromRGB(80,200,255)
+    nameLbl.TextSize           = 11
+    nameLbl.Font               = Enum.Font.GothamBold
+    nameLbl.TextXAlignment     = Enum.TextXAlignment.Left
+    nameLbl.Parent             = row
+
+    local box = Instance.new("TextBox")
+    box.Size               = UDim2.new(1,-62,0,22)
+    box.Position           = UDim2.new(0,10,0,26)
+    box.BackgroundColor3   = Color3.fromRGB(25,25,40)
+    box.BorderSizePixel    = 0
+    box.Text               = tostring(defaultVal)
+    box.TextColor3         = Color3.fromRGB(220,230,255)
+    box.PlaceholderText    = hintText
+    box.PlaceholderColor3  = Color3.fromRGB(80,90,110)
+    box.TextSize           = 12
+    box.Font               = Enum.Font.GothamBold
+    box.ClearTextOnFocus   = false
+    box.Parent             = row
+    do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,5); c.Parent = box end
+    do local p = Instance.new("UIPadding"); p.PaddingLeft = UDim.new(0,8); p.Parent = box end
+
+    local applyBtn = Instance.new("TextButton")
+    applyBtn.Size             = UDim2.new(0,44,0,22)
+    applyBtn.Position         = UDim2.new(1,-52,0,26)
+    applyBtn.BackgroundColor3 = Color3.fromRGB(30,120,80)
+    applyBtn.Text             = "Apply"
+    applyBtn.TextColor3       = Color3.fromRGB(180,255,210)
+    applyBtn.TextSize         = 10
+    applyBtn.Font             = Enum.Font.GothamBold
+    applyBtn.AutoButtonColor  = false
+    applyBtn.BorderSizePixel  = 0
+    applyBtn.Parent           = row
+    do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,5); c.Parent = applyBtn end
+    applyBtn.MouseEnter:Connect(function() applyBtn.BackgroundColor3 = Color3.fromRGB(40,160,100) end)
+    applyBtn.MouseLeave:Connect(function() applyBtn.BackgroundColor3 = Color3.fromRGB(30,120,80) end)
+
+    local function tryApply()
+        local val = tonumber(box.Text)
+        if val then
+            onApply(val)
+            applyBtn.BackgroundColor3 = Color3.fromRGB(20,180,80)
+            applyBtn.Text             = "✓"
+            task.delay(1, function()
+                if applyBtn and applyBtn.Parent then
+                    applyBtn.BackgroundColor3 = Color3.fromRGB(30,120,80)
+                    applyBtn.Text             = "Apply"
+                end
+            end)
+        else
+            applyBtn.BackgroundColor3 = Color3.fromRGB(180,40,40)
+            applyBtn.Text             = "✗"
+            task.delay(1, function()
+                if applyBtn and applyBtn.Parent then
+                    applyBtn.BackgroundColor3 = Color3.fromRGB(30,120,80)
+                    applyBtn.Text             = "Apply"
+                end
+            end)
+        end
+    end
+
+    applyBtn.MouseButton1Click:Connect(tryApply)
+    box.FocusLost:Connect(function(enterPressed)
+        if enterPressed then tryApply() end
+    end)
+
+    return box
+end
+
+-- Input TARGET_SCALE
+targetScaleBox = makeTimingInput(
+    "TARGET_SCALE  (default: 0.50)",
+    CONFIG.TARGET_SCALE,
+    "contoh: 0.50",
+    function(val)
+        val = math.clamp(val, 0.05, 0.99)
+        CONFIG.TARGET_SCALE = val
+    end
+)
+targetScaleBox.Parent.Visible = false   -- HIDDEN
+
+-- Input TIMING_OFFSET
+timingOffsetBox = makeTimingInput(
+    "TIMING_OFFSET  (default: 0.030)",
+    CONFIG.TIMING_OFFSET,
+    "contoh: 0.030",
+    function(val)
+        val = math.clamp(val, -0.2, 0.5)
+        CONFIG.TIMING_OFFSET = val
+    end
+)
+timingOffsetBox.Parent.Visible = false   -- HIDDEN
+
+-- ── Separator sebelum section lain ────────────────
+do
+    local s = Instance.new("Frame"); s.Size = UDim2.new(1,0,0,1)
+    s.BackgroundColor3 = Color3.fromRGB(50,55,65); s.BorderSizePixel = 0; s.Parent = scrollBody
+    s.Visible = false   -- HIDDEN
+end
+
+-- ================================================
+-- SECTION: Overlay Toggle
+-- ================================================
+local overlayMejaLabel = makeLabel("Overlay Nomor Meja")
+overlayMejaLabel.Visible = false   -- HIDDEN
+local overlayToggleRow, overlayToggleBtn, overlayToggleKnob = makeToggleRow("Tampilkan Label Meja")
+overlayToggleRow.Visible = false   -- HIDDEN
+
+-- ================================================
+-- SECTION: Pilih Meja
+-- ================================================
+local pilihMejaLabel = makeLabel("Pilih Meja (Scan & Highlight)")
+pilihMejaLabel.Visible = false   -- HIDDEN
+
+local dropBtn = Instance.new("TextButton")
+dropBtn.Size = UDim2.new(1,0,0,32); dropBtn.BackgroundColor3 = Color3.fromRGB(25,25,35)
+dropBtn.Text = "— Pilih Meja —"; dropBtn.TextColor3 = Color3.fromRGB(200,210,220)
+dropBtn.TextSize = 12; dropBtn.Font = Enum.Font.Gotham
+dropBtn.AutoButtonColor = false; dropBtn.BorderSizePixel = 0; dropBtn.Parent = scrollBody
+dropBtn.Visible = false   -- HIDDEN
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,7); c.Parent = dropBtn end
+
+-- ================================================
+-- SECTION: Scan
+-- ================================================
+do
+    local s = Instance.new("Frame"); s.Size = UDim2.new(1,0,0,1)
+    s.BackgroundColor3 = Color3.fromRGB(50,55,65); s.BorderSizePixel = 0; s.Parent = scrollBody
+    s.Visible = false   -- HIDDEN
+end
+
+local scanLabel = makeLabel("Scan PopcornBurstBoard")
+scanLabel.Visible = false   -- HIDDEN
+local scanToggleRow, scanToggleBtn, scanToggleKnob = makeToggleRow("Aktifkan Scan Meja")
+scanToggleRow.Visible = false   -- HIDDEN
+
+-- Side info boxes
+local function makeSideBox(sideName)
+    local box = Instance.new("Frame")
+    box.Size = UDim2.new(1,0,0,38); box.BackgroundColor3 = Color3.fromRGB(20,20,28)
+    box.BorderSizePixel = 0; box.Parent = scrollBody
+    box.Visible = false   -- HIDDEN
+    do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,7); c.Parent = box end
+
+    local nl = Instance.new("TextLabel")
+    nl.Size = UDim2.new(0,50,1,0); nl.Position = UDim2.new(0,10,0,0)
+    nl.BackgroundTransparency = 1; nl.Text = sideName
+    nl.TextColor3 = Color3.fromRGB(80,200,255); nl.TextSize = 11
+    nl.Font = Enum.Font.GothamBold; nl.TextXAlignment = Enum.TextXAlignment.Left; nl.Parent = box
+
+    local vl = Instance.new("TextLabel")
+    vl.Size = UDim2.new(1,-65,1,0); vl.Position = UDim2.new(0,60,0,0)
+    vl.BackgroundTransparency = 1; vl.Text = "—"
+    vl.TextColor3 = Color3.fromRGB(200,215,230); vl.TextSize = 11
+    vl.Font = Enum.Font.Gotham; vl.TextXAlignment = Enum.TextXAlignment.Left
+    vl.TextTruncate = Enum.TextTruncate.AtEnd; vl.Parent = box
+    return vl
+end
+
+local side1Val = makeSideBox("Side1")
+local side2Val = makeSideBox("Side2")
+
+-- ================================================
+-- SECTION: Quick Actions
+-- ================================================
+do
+    local s = Instance.new("Frame"); s.Size = UDim2.new(1,0,0,1)
+    s.BackgroundColor3 = Color3.fromRGB(50,55,65); s.BorderSizePixel = 0; s.Parent = scrollBody
+    s.Visible = false   -- HIDDEN
+end
+
+local quickActionsLabel = makeLabel("Quick Actions")
+quickActionsLabel.Visible = false   -- HIDDEN
+
+-- Row dua button sejajar
+local qaRow = Instance.new("Frame")
+qaRow.Size                  = UDim2.new(1,0,0,36)
+qaRow.BackgroundTransparency = 1
+qaRow.BorderSizePixel        = 0
+qaRow.Parent                 = scrollBody
+qaRow.Visible                = false   -- HIDDEN
+
+local qaLayout = Instance.new("UIListLayout")
+qaLayout.FillDirection       = Enum.FillDirection.Horizontal
+qaLayout.Padding             = UDim.new(0,8)
+qaLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+qaLayout.VerticalAlignment   = Enum.VerticalAlignment.Center
+qaLayout.Parent              = qaRow
+
+-- Button Accept (MinigameReady)
+local acceptBtn = Instance.new("TextButton")
+acceptBtn.Size             = UDim2.new(0,114,0,34)
+acceptBtn.BackgroundColor3 = Color3.fromRGB(30,120,200)
+acceptBtn.Text             = "✔  Accept"
+acceptBtn.TextColor3       = Color3.fromRGB(210,235,255)
+acceptBtn.TextSize         = 12
+acceptBtn.Font             = Enum.Font.GothamBold
+acceptBtn.AutoButtonColor  = false
+acceptBtn.BorderSizePixel  = 0
+acceptBtn.Parent           = qaRow
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,8); c.Parent = acceptBtn end
+acceptBtn.MouseEnter:Connect(function() acceptBtn.BackgroundColor3 = Color3.fromRGB(50,150,230) end)
+acceptBtn.MouseLeave:Connect(function() acceptBtn.BackgroundColor3 = Color3.fromRGB(30,120,200) end)
+
+-- Button Popcorn (MinigameChooseVote)
+local popcornBtn = Instance.new("TextButton")
+popcornBtn.Size             = UDim2.new(0,114,0,34)
+popcornBtn.BackgroundColor3 = Color3.fromRGB(200,130,20)
+popcornBtn.Text             = "🍿  Popcorn"
+popcornBtn.TextColor3       = Color3.fromRGB(255,240,200)
+popcornBtn.TextSize         = 12
+popcornBtn.Font             = Enum.Font.GothamBold
+popcornBtn.AutoButtonColor  = false
+popcornBtn.BorderSizePixel  = 0
+popcornBtn.Parent           = qaRow
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,8); c.Parent = popcornBtn end
+popcornBtn.MouseEnter:Connect(function() popcornBtn.BackgroundColor3 = Color3.fromRGB(230,160,40) end)
+popcornBtn.MouseLeave:Connect(function() popcornBtn.BackgroundColor3 = Color3.fromRGB(200,130,20) end)
+
+-- Button Test Fire AttemptPop (full width, row sendiri)
+local testFireBtn = Instance.new("TextButton")
+testFireBtn.Size             = UDim2.new(1,0,0,34)
+testFireBtn.BackgroundColor3 = Color3.fromRGB(100,30,160)
+testFireBtn.Text             = "⚡  Test Fire AttemptPop (Manual)"
+testFireBtn.TextColor3       = Color3.fromRGB(230,210,255)
+testFireBtn.TextSize         = 12
+testFireBtn.Font             = Enum.Font.GothamBold
+testFireBtn.AutoButtonColor  = false
+testFireBtn.BorderSizePixel  = 0
+testFireBtn.Parent           = scrollBody
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,8); c.Parent = testFireBtn end
+testFireBtn.MouseEnter:Connect(function() testFireBtn.BackgroundColor3 = Color3.fromRGB(130,50,200) end)
+testFireBtn.MouseLeave:Connect(function() testFireBtn.BackgroundColor3 = Color3.fromRGB(100,30,160) end)
+testFireBtn.Visible = false   -- HIDDEN
+
+-- ================================================
+-- SECTION: Auto Kill (bukan PopcornBurst)
+-- ================================================
+do
+    local s = Instance.new("Frame"); s.Size = UDim2.new(1,0,0,1)
+    s.BackgroundColor3 = Color3.fromRGB(50,55,65); s.BorderSizePixel = 0; s.Parent = scrollBody
+    s.Visible = false   -- HIDDEN
+end
+
+local autoKillLabel = makeLabel("Auto Kill (bukan Popcorn)")
+autoKillLabel.Visible = false   -- HIDDEN
+
+local autoKillRow, autoHopToggleBtn, autoHopToggleKnob = makeToggleRow("Auto Kill jika bukan Popcorn")
+autoKillRow.Visible = false   -- HIDDEN
+-- Default ON
+setToggleVisual(autoHopToggleBtn, autoHopToggleKnob, true)
+
+-- Status box game terdeteksi
+local gameDetectBox = Instance.new("Frame")
+gameDetectBox.Size             = UDim2.new(1,0,0,46)
+gameDetectBox.BackgroundColor3 = Color3.fromRGB(20,20,28)
+gameDetectBox.BorderSizePixel  = 0
+gameDetectBox.Parent           = scrollBody
+gameDetectBox.Visible          = false   -- HIDDEN
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,7); c.Parent = gameDetectBox end
+
+local gameDetectId = makeInfoRow(gameDetectBox, "Game ID",   6)
+local gameDetectMsg = makeInfoRow(gameDetectBox, "Status",   26)
+
+-- ================================================
+-- SECTION: Console Tools
+-- ================================================
+do
+    local s = Instance.new("Frame"); s.Size = UDim2.new(1,0,0,1)
+    s.BackgroundColor3 = Color3.fromRGB(50,55,65); s.BorderSizePixel = 0; s.Parent = scrollBody
+    s.Visible = false   -- HIDDEN
+end
+
+local consoleToolsLabel = makeLabel("Console Tools")
+consoleToolsLabel.Visible = false   -- HIDDEN
+
+-- Info baris jumlah log
+local consoleInfoLbl = Instance.new("TextLabel")
+consoleInfoLbl.Size               = UDim2.new(1,0,0,18)
+consoleInfoLbl.BackgroundTransparency = 1
+consoleInfoLbl.Text               = "0 baris tersimpan"
+consoleInfoLbl.TextColor3         = Color3.fromRGB(100,120,150)
+consoleInfoLbl.TextSize           = 11
+consoleInfoLbl.Font               = Enum.Font.Gotham
+consoleInfoLbl.TextXAlignment     = Enum.TextXAlignment.Left
+consoleInfoLbl.Parent             = scrollBody
+consoleInfoLbl.Visible            = false   -- HIDDEN
+
+-- Row Copy + Clear sejajar
+local consoleRow = Instance.new("Frame")
+consoleRow.Size                   = UDim2.new(1,0,0,36)
+consoleRow.BackgroundTransparency = 1
+consoleRow.BorderSizePixel        = 0
+consoleRow.Parent                 = scrollBody
+consoleRow.Visible                = false   -- HIDDEN
+
+do
+    local l = Instance.new("UIListLayout")
+    l.FillDirection       = Enum.FillDirection.Horizontal
+    l.Padding             = UDim.new(0,8)
+    l.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    l.VerticalAlignment   = Enum.VerticalAlignment.Center
+    l.Parent              = consoleRow
+end
+
+-- Button Copy Console
+local copyConsoleBtn = Instance.new("TextButton")
+copyConsoleBtn.Size             = UDim2.new(0,114,0,34)
+copyConsoleBtn.BackgroundColor3 = Color3.fromRGB(20,100,80)
+copyConsoleBtn.Text             = "📋  Copy Log"
+copyConsoleBtn.TextColor3       = Color3.fromRGB(180,255,230)
+copyConsoleBtn.TextSize         = 12
+copyConsoleBtn.Font             = Enum.Font.GothamBold
+copyConsoleBtn.AutoButtonColor  = false
+copyConsoleBtn.BorderSizePixel  = 0
+copyConsoleBtn.Parent           = consoleRow
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,8); c.Parent = copyConsoleBtn end
+copyConsoleBtn.MouseEnter:Connect(function() copyConsoleBtn.BackgroundColor3 = Color3.fromRGB(30,130,100) end)
+copyConsoleBtn.MouseLeave:Connect(function() copyConsoleBtn.BackgroundColor3 = Color3.fromRGB(20,100,80) end)
+
+-- Button Clear Console
+local clearConsoleBtn = Instance.new("TextButton")
+clearConsoleBtn.Size             = UDim2.new(0,114,0,34)
+clearConsoleBtn.BackgroundColor3 = Color3.fromRGB(110,30,30)
+clearConsoleBtn.Text             = "🗑  Clear Log"
+clearConsoleBtn.TextColor3       = Color3.fromRGB(255,200,200)
+clearConsoleBtn.TextSize         = 12
+clearConsoleBtn.Font             = Enum.Font.GothamBold
+clearConsoleBtn.AutoButtonColor  = false
+clearConsoleBtn.BorderSizePixel  = 0
+clearConsoleBtn.Parent           = consoleRow
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,8); c.Parent = clearConsoleBtn end
+clearConsoleBtn.MouseEnter:Connect(function() clearConsoleBtn.BackgroundColor3 = Color3.fromRGB(150,40,40) end)
+clearConsoleBtn.MouseLeave:Connect(function() clearConsoleBtn.BackgroundColor3 = Color3.fromRGB(110,30,30) end)
+
+-- ================================================
+-- SECTION: Auto Play
+-- ================================================
+do
+    local s = Instance.new("Frame"); s.Size = UDim2.new(1,0,0,1)
+    s.BackgroundColor3 = Color3.fromRGB(50,55,65); s.BorderSizePixel = 0; s.Parent = scrollBody
+    s.Visible = false   -- HIDDEN
+end
+
+local statusAutoPlayLabel = makeLabel("Status Auto Play")
+statusAutoPlayLabel.Visible = false   -- HIDDEN
+
+local statusBox = Instance.new("Frame")
+statusBox.Size = UDim2.new(1,0,0,32); statusBox.BackgroundColor3 = Color3.fromRGB(20,20,28)
+statusBox.BorderSizePixel = 0; statusBox.Parent = scrollBody
+statusBox.Visible = false   -- HIDDEN
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,7); c.Parent = statusBox end
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(1,-12,1,0); statusLabel.Position = UDim2.new(0,12,0,0)
+statusLabel.BackgroundTransparency = 1; statusLabel.Text = "⏸  Menunggu..."
+statusLabel.TextColor3 = Color3.fromRGB(140,160,180); statusLabel.TextSize = 12
+statusLabel.Font = Enum.Font.Gotham; statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+statusLabel.Parent = statusBox
+
+local startBtn = Instance.new("TextButton")
+startBtn.Size = UDim2.new(1,0,0,36); startBtn.BackgroundColor3 = Color3.fromRGB(30,160,100)
+startBtn.Text = "▶  Mulai Auto Play"; startBtn.TextColor3 = Color3.fromRGB(230,255,240)
+startBtn.TextSize = 13; startBtn.Font = Enum.Font.GothamBold
+startBtn.AutoButtonColor = false; startBtn.BorderSizePixel = 0; startBtn.Parent = scrollBody
+startBtn.Visible = false   -- HIDDEN
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,8); c.Parent = startBtn end
+startBtn.MouseEnter:Connect(function() startBtn.BackgroundColor3 = Color3.fromRGB(50,200,130) end)
+startBtn.MouseLeave:Connect(function() startBtn.BackgroundColor3 = Color3.fromRGB(30,160,100) end)
+
+-- ================================================
+-- DROPDOWN LIST
+-- ================================================
+local dropList = Instance.new("ScrollingFrame")
+dropList.Name = "DropList"; dropList.Size = UDim2.new(0,248,0,0)
+dropList.BackgroundColor3 = Color3.fromRGB(20,20,28); dropList.BorderSizePixel = 0
+dropList.ScrollBarThickness = 4; dropList.ScrollBarImageColor3 = Color3.fromRGB(80,200,255)
+dropList.Visible = false; dropList.ZIndex = 20; dropList.Parent = screenGui
+do
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,7); c.Parent = dropList
+    local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(80,200,255); s.Thickness = 1; s.Parent = dropList
+    local l = Instance.new("UIListLayout"); l.Parent = dropList
+end
+
+-- ================================================
+-- STATE
+-- ================================================
+local selectedTable = nil
+local overlayOn     = false
+local scanOn        = false
+local timingOn      = true     -- default ON
+local overlayBills  = {}
+local autoPlaying   = false
+local autoThread    = nil
+local scriptActive  = true
+
+-- warna overlay
+local COLOR_NORMAL    = Color3.fromRGB(80, 200, 255)
+local COLOR_HIGHLIGHT = Color3.fromRGB(255, 210, 50)
+local BG_NORMAL       = Color3.fromRGB(0, 0, 0)
+local BG_HIGHLIGHT    = Color3.fromRGB(60, 45, 5)
+
+-- ================================================
+-- OVERLAY
+-- ================================================
+local function clearOverlay()
+    for _, entry in ipairs(overlayBills) do
+        if entry.bb and entry.bb.Parent then entry.bb:Destroy() end
+    end
+    overlayBills = {}
+end
+
+local function buildOverlay()
+    clearOverlay()
+    if not overlayOn then return end
+
+    local tables = getAllTables()
+    local px = CONFIG.OVERLAY_PX
+    local ph = math.round(px * 0.57)
+    local ts = math.clamp(math.round(px * 0.28), 10, 40)
+
+    for i, tbl in ipairs(tables) do
+        local part = tbl:IsA("BasePart") and tbl or tbl:FindFirstChildWhichIsA("BasePart", true)
+        if part then
+            local isSel = (selectedTable == i)
+
+            local bb = Instance.new("BillboardGui")
+            bb.Size        = UDim2.new(0, px, 0, ph)
+            bb.StudsOffset = Vector3.new(0, CONFIG.OVERLAY_STUDS, 0)
+            bb.AlwaysOnTop = true
+            bb.MaxDistance = CONFIG.OVERLAY_DISTANCE
+            bb.Parent      = part
+
+            local bg = Instance.new("Frame")
+            bg.Size               = UDim2.new(1,0,1,0)
+            bg.BackgroundColor3   = isSel and BG_HIGHLIGHT or BG_NORMAL
+            bg.BackgroundTransparency = 0.15
+            bg.BorderSizePixel    = 0
+            bg.Parent             = bb
+            do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,8); c.Parent = bg end
+
+            local stroke = Instance.new("UIStroke")
+            stroke.Thickness = isSel and 2.5 or 1
+            stroke.Color     = isSel and COLOR_HIGHLIGHT or Color3.fromRGB(50,100,140)
+            stroke.Parent    = bg
+
+            local numLbl = Instance.new("TextLabel")
+            numLbl.Size               = UDim2.new(1,0,1,0)
+            numLbl.BackgroundTransparency = 1
+            numLbl.Text               = tostring(i)
+            numLbl.TextColor3         = isSel and COLOR_HIGHLIGHT or COLOR_NORMAL
+            numLbl.TextSize           = isSel and (ts + 4) or ts
+            numLbl.Font               = Enum.Font.GothamBold
+            numLbl.Parent             = bg
+
+            table.insert(overlayBills, { bb = bb, bg = bg, lbl = numLbl, stroke = stroke, idx = i })
+        end
+    end
+end
+
+local function refreshHighlight()
+    local ts = math.clamp(math.round(CONFIG.OVERLAY_PX * 0.28), 10, 40)
+    for _, entry in ipairs(overlayBills) do
+        local isSel = (selectedTable == entry.idx)
+        entry.bg.BackgroundColor3 = isSel and BG_HIGHLIGHT or BG_NORMAL
+        entry.lbl.TextColor3      = isSel and COLOR_HIGHLIGHT or COLOR_NORMAL
+        entry.lbl.TextSize        = isSel and (ts + 4) or ts
+        entry.stroke.Color        = isSel and COLOR_HIGHLIGHT or Color3.fromRGB(50,100,140)
+        entry.stroke.Thickness    = isSel and 2.5 or 1
+    end
+end
+
+-- ================================================
+-- TOGGLE OVERLAY
+-- ================================================
+overlayToggleBtn.MouseButton1Click:Connect(function()
+    overlayOn = not overlayOn
+    setToggleVisual(overlayToggleBtn, overlayToggleKnob, overlayOn)
+    if overlayOn then
+        buildOverlay()
+    else
+        clearOverlay()
+    end
+end)
+
+-- ================================================
+-- TOGGLE SCAN
+-- ================================================
+scanToggleBtn.MouseButton1Click:Connect(function()
+    scanOn = not scanOn
+    setToggleVisual(scanToggleBtn, scanToggleKnob, scanOn)
+    if not scanOn then
+        side1Val.Text = "—"
+        side2Val.Text = "—"
+    end
+end)
+
+-- ================================================
+-- TOGGLE TIMING
+-- ================================================
+
+-- Forward-declare semua state agar fullResetTimingState & toggle bisa mengaksesnya
+local pendingHitThread   = nil
+local myPlayerIndex      = nil
+local lastRingKey        = ""
+local firedSlotsThisRing = {}
+local lastKnownRing      = nil
+local lastFiredTime      = os.clock()
+
+local function cancelPendingHit()
+    if pendingHitThread then
+        task.cancel(pendingHitThread)
+        pendingHitThread = nil
+    end
+end
+
+local function fullResetTimingState()
+    cancelPendingHit()
+    lastRingKey        = ""
+    firedSlotsThisRing = {}
+    lastKnownRing      = nil
+    myPlayerIndex      = nil
+    lastFiredTime      = os.clock()
+
+    tRingDurVal.Text   = "—"
+    tCountdownVal.Text = "—"
+    tLastHitVal.Text   = "—"
+
+    if resetIdxBtn and resetIdxBtn.Parent then
+        resetIdxBtn.Text       = "🔄  Reset Player Index  (p#?)"
+        resetIdxBtn.TextColor3 = Color3.fromRGB(160,170,200)
+    end
+end
+
+timingToggleBtn.MouseButton1Click:Connect(function()
+    timingOn = not timingOn
+    setToggleVisual(timingToggleBtn, timingToggleKnob, timingOn)
+
+    -- OFF maupun ON → selalu full reset, fresh dari awal
+    fullResetTimingState()
+
+    if timingOn then
+        tLastHitVal.Text      = "▶ ON — tunggu ring..."
+        tLastHitVal.TextColor3 = Color3.fromRGB(80,200,255)
+    else
+        tLastHitVal.Text      = "■ OFF"
+        tLastHitVal.TextColor3 = Color3.fromRGB(140,160,180)
+    end
+end)
+
+-- ================================================
+-- HELPER: Ambil remote dari path string
+-- ================================================
+local function getRemoteByPath(pathStr)
+    local parts = pathStr:split(".")
+    local cur = game
+    for _, p in ipairs(parts) do
+        cur = cur:FindFirstChild(p)
+        if not cur then return nil end
+    end
+    return cur
+end
+
+-- ================================================
+-- CAPTURE SYSTEM
+-- ================================================
+-- capturedRemote & capturedArgs diisi saat user klik "Capture" lalu klik manual
+local capturedRemote   = nil
+local capturedArgs     = nil
+local captureListening = false
+
+local function setupNamecallCapture()
+    if not getrawmetatable then
+        tCaptureVal.Text       = "⚠ getrawmetatable N/A"
+        tCaptureVal.TextColor3 = Color3.fromRGB(255,100,80)
+        return
+    end
+    local mt = getrawmetatable(game)
+    if not mt then return end
+    local oldNamecall = mt.__namecall
+    setreadonly(mt, false)
+    mt.__namecall = newcclosure(function(self, ...)
+        -- WAJIB: selalu jalankan oldNamecall agar game tidak rusak
+        -- Kita cuma "mengintip", TIDAK memblokir apapun
+        local results = table.pack(oldNamecall(self, ...))
+
+        -- Hanya proses saat captureListening aktif dan method FireServer
+        if captureListening
+            and getnamecallmethod() == "FireServer"
+            and typeof(self) == "Instance"
+            and self:IsA("RemoteEvent") then
+
+            local args = {...}
+            for i, v in ipairs(args) do
+            end
+            capturedRemote   = self
+            capturedArgs     = args
+            captureListening = false
+
+            tCaptureVal.Text       = "✅ " .. self.Name .. " (" .. #args .. " args)"
+            tCaptureVal.TextColor3 = Color3.fromRGB(80,255,140)
+            captureBtn.BackgroundColor3 = Color3.fromRGB(30,100,50)
+            captureBtn.Text             = "✅  Remote Captured!"
+        end
+
+        return table.unpack(results, 1, results.n)
+    end)
+    setreadonly(mt, true)
+end
+pcall(setupNamecallCapture)
+
+-- Tombol Capture
+captureBtn.MouseButton1Click:Connect(function()
+    capturedRemote   = nil
+    capturedArgs     = nil
+    captureListening = true
+    captureBtn.BackgroundColor3 = Color3.fromRGB(200,100,20)
+    captureBtn.Text             = "👂  Menunggu klik manual..."
+    tCaptureVal.Text       = "Klik manual sekarang!"
+    tCaptureVal.TextColor3 = Color3.fromRGB(255,200,50)
+end)
+
+-- ================================================
+-- QUICK ACTION HANDLERS
+-- ================================================
+local networkingFolder = game:GetService("ReplicatedStorage")
+    :WaitForChild("Shared", 5)
+    and game:GetService("ReplicatedStorage").Shared
+    :WaitForChild("Remotes", 5)
+    and game:GetService("ReplicatedStorage").Shared.Remotes
+    :WaitForChild("Networking", 5)
+    and game:GetService("ReplicatedStorage").Shared.Remotes.Networking
+
+local function getNetworkRemote(name)
+    if not networkingFolder then return nil end
+    return networkingFolder:FindFirstChild(name)
+end
+
+-- Button Accept → MinigameReady:FireServer(true, 0)
+acceptBtn.MouseButton1Click:Connect(function()
+    local remote = getNetworkRemote("RE/Minigame/MinigameReady")
+    if remote then
+        remote:FireServer(true, 0)
+        statusLabel.Text      = "✔  MinigameReady fired!"
+        statusLabel.TextColor3 = Color3.fromRGB(80,200,255)
+    else
+        statusLabel.Text      = "⚠  RE/Minigame/MinigameReady tidak ditemukan"
+        statusLabel.TextColor3 = Color3.fromRGB(255,100,80)
+    end
+end)
+
+-- Button Popcorn → MinigameChooseVote:FireServer("PopcornBurst")
+popcornBtn.MouseButton1Click:Connect(function()
+    local remote = getNetworkRemote("RE/Minigame/MinigameChooseVote")
+    if remote then
+        remote:FireServer("PopcornBurst")
+        statusLabel.Text      = "🍿  ChooseVote PopcornBurst fired!"
+        statusLabel.TextColor3 = Color3.fromRGB(255,200,60)
+    else
+        statusLabel.Text      = "⚠  RE/Minigame/MinigameChooseVote tidak ditemukan"
+        statusLabel.TextColor3 = Color3.fromRGB(255,100,80)
+    end
+end)
+
+-- Button Test Fire → MinigameGameAction:FireServer("AttemptPop", timestamp)
+-- Gunakan untuk verifikasi apakah remote bisa di-fire dan game meresponnya
+testFireBtn.MouseButton1Click:Connect(function()
+    local remote = getNetworkRemote(CONFIG.HIT_REMOTE_NAME)
+    if remote then
+        local ts = workspace:GetServerTimeNow()
+        remote:FireServer(CONFIG.HIT_ACTION, ts)
+        statusLabel.Text      = string.format("⚡ AttemptPop fired! ts=%.2f", ts)
+        statusLabel.TextColor3 = Color3.fromRGB(200,150,255)
+
+        -- Flash warna tombol sebagai konfirmasi visual
+        testFireBtn.BackgroundColor3 = Color3.fromRGB(60,220,120)
+        testFireBtn.Text             = "✅  Fired!"
+        task.delay(0.8, function()
+            if testFireBtn and testFireBtn.Parent then
+                testFireBtn.BackgroundColor3 = Color3.fromRGB(100,30,160)
+                testFireBtn.Text             = "⚡  Test Fire AttemptPop (Manual)"
+            end
+        end)
+    else
+        statusLabel.Text      = "⚠  " .. CONFIG.HIT_REMOTE_NAME .. " tidak ditemukan"
+        statusLabel.TextColor3 = Color3.fromRGB(255,100,80)
+        testFireBtn.BackgroundColor3 = Color3.fromRGB(180,40,40)
+        testFireBtn.Text             = "❌  Remote tidak ditemukan"
+        task.delay(1.5, function()
+            if testFireBtn and testFireBtn.Parent then
+                testFireBtn.BackgroundColor3 = Color3.fromRGB(100,30,160)
+                testFireBtn.Text             = "⚡  Test Fire AttemptPop (Manual)"
+            end
+        end)
+    end
+end)
+
+-- Handler reset player index
+resetIdxBtn.MouseButton1Click:Connect(function()
+    myPlayerIndex  = nil
+    lastRingKey    = ""
+    cancelPendingHit()
+    resetIdxBtn.Text      = "🔄  Reset Player Index  (p#?)"
+    resetIdxBtn.TextColor3 = Color3.fromRGB(160,170,200)
+    tRingDurVal.Text       = "—"
+    tCountdownVal.Text     = "—"
+end)
+
+-- ================================================
+-- AUTO HOP STATE & LOGIC
+-- ================================================
+local autoHopOn    = true
+local isHopping    = false  -- cegah trigger kill berkali-kali
+
+autoHopToggleBtn.MouseButton1Click:Connect(function()
+    autoHopOn = not autoHopOn
+    setToggleVisual(autoHopToggleBtn, autoHopToggleKnob, autoHopOn)
+    if autoHopOn then
+        gameDetectMsg.Text      = "Menunggu game dipilih..."
+        gameDetectMsg.TextColor3 = Color3.fromRGB(140,160,180)
+    else
+        isHopping = false
+        gameDetectMsg.Text      = "Nonaktif"
+        gameDetectMsg.TextColor3 = Color3.fromRGB(100,110,130)
+    end
+end)
+
+-- Init status label sesuai default ON
+gameDetectMsg.Text      = "Menunggu game dipilih..."
+gameDetectMsg.TextColor3 = Color3.fromRGB(140,160,180)
+
+local function doRejoin()
+    if isHopping then return end
+    isHopping = true
+
+    gameDetectMsg.Text      = "⚔ Bunuh karakter..."
+    gameDetectMsg.TextColor3 = Color3.fromRGB(255,200,60)
+
+    task.spawn(function()
+        local ok, err = pcall(function()
+            local char = player.Character
+            local hum  = char and char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum.Health = 0
+            end
+        end)
+
+        if ok then
+            gameDetectMsg.Text      = "✔ Karakter dibunuh"
+            gameDetectMsg.TextColor3 = Color3.fromRGB(80,255,150)
+        else
+            gameDetectMsg.Text      = "✘ Gagal: " .. tostring(err)
+            gameDetectMsg.TextColor3 = Color3.fromRGB(255,80,80)
+        end
+
+        task.wait(3)
+        isHopping = false
+        if autoHopOn then
+            gameDetectMsg.Text      = "Menunggu game berikutnya..."
+            gameDetectMsg.TextColor3 = Color3.fromRGB(140,160,180)
+        end
+    end)
+end
+
+-- Hook OnClientEvent remote yang sama — tangkap gameId
+-- Packet: { { "", "禮", { announcementText="...", gameId="PopcornBurst" } } }
+local gameDetectRemote = getRemoteByPath(CONFIG.STATE_REMOTE_PATH)
+if gameDetectRemote and gameDetectRemote:IsA("RemoteEvent") then
+    gameDetectRemote.OnClientEvent:Connect(function(rawData)
+        -- Hanya proses jika ada autoHop aktif atau untuk display info
+        local ok, _ = pcall(function()
+            local packet = rawData[1]; if not packet then return end
+            local payload = packet[3]; if not payload then return end
+
+            -- Cek apakah packet ini adalah gameId announcement
+            local gameId = payload.gameId
+            if not gameId then return end
+
+            -- Update UI
+            gameDetectId.Text = gameId
+            gameDetectId.TextColor3 = gameId == "PopcornBurst"
+                and Color3.fromRGB(80,255,140)
+                or  Color3.fromRGB(255,160,50)
+
+            if gameId == "PopcornBurst" then
+                gameDetectMsg.Text      = "✅ PopcornBurst! Lanjut main"
+                gameDetectMsg.TextColor3 = Color3.fromRGB(80,255,140)
+                isHopping = false
+                fullResetTimingState()
+            else
+                local ann = payload.announcementText or gameId
+                gameDetectMsg.Text      = "⚠ Bukan Popcorn: " .. gameId
+                gameDetectMsg.TextColor3 = Color3.fromRGB(255,160,50)
+
+                if autoHopOn then
+                    doRejoin()
+                end
+            end
+        end)
+    end)
+end
+
+-- Update counter label setiap detik
+task.spawn(function()
+    while scriptActive do
+        task.wait(1)
+        if consoleInfoLbl and consoleInfoLbl.Parent then
+            consoleInfoLbl.Text = string.format(
+                "%d baris tersimpan  (max %d)",
+                #consoleBuffer, MAX_LINES
+            )
+        end
+    end
+end)
+
+-- Button Copy → setclipboard (Delta support)
+copyConsoleBtn.MouseButton1Click:Connect(function()
+    if #consoleBuffer == 0 then
+        copyConsoleBtn.Text = "⚠  Buffer kosong"
+        task.delay(1, function()
+            if copyConsoleBtn and copyConsoleBtn.Parent then
+                copyConsoleBtn.Text = "📋  Copy Log"
+            end
+        end)
+        return
+    end
+
+    local text = table.concat(consoleBuffer, "\n")
+
+    -- setclipboard tersedia di Delta dan kebanyakan executor
+    local ok, err = pcall(function()
+        setclipboard(text)
+    end)
+
+    if ok then
+        copyConsoleBtn.BackgroundColor3 = Color3.fromRGB(30,180,100)
+        copyConsoleBtn.Text             = string.format("✅  Copied! (%d ln)", #consoleBuffer)
+    else
+        -- Fallback: print ke console biasa kalau setclipboard gagal
+        copyConsoleBtn.BackgroundColor3 = Color3.fromRGB(180,100,20)
+        copyConsoleBtn.Text             = "⚠  Fallback: cek output"
+    end
+
+    task.delay(1.5, function()
+        if copyConsoleBtn and copyConsoleBtn.Parent then
+            copyConsoleBtn.BackgroundColor3 = Color3.fromRGB(20,100,80)
+            copyConsoleBtn.Text             = "📋  Copy Log"
+        end
+    end)
+end)
+
+-- Button Clear → bersihkan buffer + clear executor console
+clearConsoleBtn.MouseButton1Click:Connect(function()
+    local count = #consoleBuffer
+    consoleBuffer = {}
+
+    -- consoleclear() tersedia di Delta
+    pcall(function()
+        consoleclear()
+    end)
+
+    clearConsoleBtn.BackgroundColor3 = Color3.fromRGB(60,180,80)
+    clearConsoleBtn.Text             = string.format("✅  Cleared! (%d ln)", count)
+    consoleInfoLbl.Text              = "0 baris tersimpan"
+
+    task.delay(1.2, function()
+        if clearConsoleBtn and clearConsoleBtn.Parent then
+            clearConsoleBtn.BackgroundColor3 = Color3.fromRGB(110,30,30)
+            clearConsoleBtn.Text             = "🗑  Clear Log"
+        end
+    end)
+end)
+
+-- ================================================
+-- AUTO TIMING RING — Core Logic
+-- ================================================
+-- (state variables & cancelPendingHit sudah dideklarasi di atas, sebelum fullResetTimingState)
+
+-- ── Perfect Scale Buffer ──────────────────────────
+-- Kumpulkan sc dari Perfect hits saja (pasti milik kita)
+
+local function calcFireTime(ringStartTime, ringDuration)
+    return ringStartTime + ringDuration * (1 - CONFIG.TARGET_SCALE) - CONFIG.TIMING_OFFSET
+end
+
+-- Fire satu slot
+local function fireSlot(hitRemote, slotIndex, perfectAt, ringDuration, playerIdx, isExtra)
+    -- Update watchdog timer
+    lastFiredTime = os.clock()
+
+    local fireTime = workspace:GetServerTimeNow()
+    local drift    = fireTime - perfectAt
+
+    hitRemote:FireServer(CONFIG.HIT_ACTION, fireTime)
+
+    local driftMs  = math.round(drift * 1000)
+    local driftStr = driftMs >= 0 and string.format("+%dms", driftMs) or string.format("%dms", driftMs)
+    local tag      = isExtra and "🔥+" or "🔥"
+
+    if not isExtra then
+        tLastHitVal.Text = string.format("%s FIRED  %s  slot:%s  p#%s",
+            tag, driftStr, tostring(slotIndex or "?"), tostring(playerIdx or "?"))
+        tLastHitVal.TextColor3 = math.abs(drift) < 0.003
+            and Color3.fromRGB(50,255,120)
+            or  math.abs(drift) < 0.008
+                and Color3.fromRGB(120,255,150)
+                or  math.abs(drift) < 0.020
+                    and Color3.fromRGB(200,220,60)
+                    or  Color3.fromRGB(255,160,50)
+    end
+
+end
+
+local function scheduleHit(ringStartTime, ringDuration, slotIndex, playerIdx)
+    local key = string.format("%.6f_%.6f", ringStartTime, ringDuration)
+    if key == lastRingKey then return end
+    lastRingKey        = key
+    firedSlotsThisRing = {}
+
+    cancelPendingHit()
+    if ringDuration <= CONFIG.MIN_RING_DURATION then return end
+
+    -- Simpan data ring ini agar bisa di-resume kalau toggle OFF→ON
+    lastKnownRing = {
+        ringStartTime = ringStartTime,
+        ringDuration  = ringDuration,
+        slotIndex     = slotIndex,
+        playerIdx     = playerIdx,
+    }
+
+    local perfectAt = calcFireTime(ringStartTime, ringDuration)
+    local serverNow = workspace:GetServerTimeNow()
+    local waitTime  = perfectAt - serverNow
+
+    tRingDurVal.Text = string.format(
+        "%.3fs  sc→%.2f  p#%s  slot:%s",
+        ringDuration, CONFIG.TARGET_SCALE,
+        tostring(playerIdx or "?"), tostring(slotIndex or "?")
+    )
+
+    if waitTime < -0.08 then  -- toleransi 80ms — masih coba fire kalau sedikit telat
+        tLastHitVal.Text      = "⏩ Terlambat (ring sudah lewat)"
+        tLastHitVal.TextColor3 = Color3.fromRGB(180,180,80)
+        return
+    end
+
+    if slotIndex then firedSlotsThisRing[tostring(slotIndex)] = true end
+
+    pendingHitThread = task.spawn(function()
+        -- Countdown live
+        local countdownConn
+        countdownConn = game:GetService("RunService").Heartbeat:Connect(function()
+            if not timingOn then countdownConn:Disconnect(); return end
+            local rem = perfectAt - workspace:GetServerTimeNow()
+            if rem <= 0 then
+                tCountdownVal.Text      = "🔥 FIRE!"
+                tCountdownVal.TextColor3 = Color3.fromRGB(80,255,140)
+                countdownConn:Disconnect()
+            else
+                tCountdownVal.Text = string.format("%.3f s", rem)
+                tCountdownVal.TextColor3 = rem < 0.10
+                    and Color3.fromRGB(255,160,40)
+                    or  Color3.fromRGB(200,220,240)
+            end
+        end)
+
+        -- Fase 1: task.wait kasar sampai 30ms sebelum target (dulu 50ms)
+        local coarseWait = waitTime - 0.030
+        if coarseWait > 0 then task.wait(coarseWait) end
+
+        -- Fase 2: busy-wait Heartbeat sampai 1.5ms sebelum (dulu 3ms)
+        while workspace:GetServerTimeNow() < (perfectAt - 0.0015) do
+            game:GetService("RunService").Heartbeat:Wait()
+        end
+
+        -- Fase 3: spinlock CPU tight sampai tepat target
+        -- (cek timingOn di dalam loop agar bisa dihentikan saat toggle OFF)
+        while workspace:GetServerTimeNow() < perfectAt do
+            if not timingOn or not scriptActive then return end
+        end
+
+        if not timingOn or not scriptActive then countdownConn:Disconnect(); return end
+
+        local hitRemote = getNetworkRemote(CONFIG.HIT_REMOTE_NAME)
+        if hitRemote then
+            fireSlot(hitRemote, slotIndex, perfectAt, ringDuration, playerIdx, false)
+        else
+            tLastHitVal.Text      = "⚠ remote tidak ditemukan"
+            tLastHitVal.TextColor3 = Color3.fromRGB(255,100,80)
+        end
+    end)
+end
+
+-- Fire slot tambahan — HANYA jika slot index valid (bukan nil)
+-- Kalau slot selalu nil/?, skip extra fire untuk cegah triple firing
+local function scheduleExtraSlot(ringStartTime, ringDuration, slotIndex, playerIdx)
+    if not timingOn or not scriptActive then return end
+
+    -- Kalau slot tidak diketahui, jangan fire extra — cukup 1 fire per ring
+    if slotIndex == nil then return end
+
+    local slotKey = tostring(slotIndex)
+    if firedSlotsThisRing[slotKey] then return end
+    firedSlotsThisRing[slotKey] = true
+
+    local perfectAt = calcFireTime(ringStartTime, ringDuration)
+    local serverNow = workspace:GetServerTimeNow()
+    local waitTime  = perfectAt - serverNow
+
+    if waitTime < -0.08 then return end
+
+    task.spawn(function()
+        local coarseWait = waitTime - 0.030
+        if coarseWait > 0 then task.wait(coarseWait) end
+
+        while workspace:GetServerTimeNow() < (perfectAt - 0.0015) do
+            game:GetService("RunService").Heartbeat:Wait()
+        end
+        while workspace:GetServerTimeNow() < perfectAt do end
+
+        if not timingOn or not scriptActive then return end
+
+        local hitRemote = getNetworkRemote(CONFIG.HIT_REMOTE_NAME)
+        if hitRemote then
+            fireSlot(hitRemote, slotIndex, perfectAt, ringDuration, playerIdx, true)
+        end
+    end)
+end
+
+-- ================================================
+-- HOOK OnClientEvent
+-- ================================================
+local stateRemote = getRemoteByPath(CONFIG.STATE_REMOTE_PATH)
+
+if stateRemote and stateRemote:IsA("RemoteEvent") then
+    stateRemote.OnClientEvent:Connect(function(rawData)
+        local ok, err = pcall(function()
+            local packet  = rawData[1]; if not packet then return end
+            local payload = packet[3];  if not payload then return end
+
+            -- ── Struktur baru: session.private.myState ─────────────
+            local session = payload.session
+            if not session then return end
+            local private = session.private
+            if not private then return end
+            local myState = private.myState
+            if not myState then return end
+
+            -- ── 1. Schedule hit dari myState langsung ──────────────
+            -- Server sudah langsung kirim state milik kita — tidak perlu
+            -- deteksi player index lagi
+            local ringDuration  = myState.ringDuration
+            local ringStartTime = myState.ringStartTime
+            local slot          = myState.activeKernelSlot
+
+            if ringDuration and ringStartTime
+                and ringDuration > CONFIG.MIN_RING_DURATION
+                and ringStartTime > 0 then
+
+                local newKey = string.format("%.6f_%.6f", ringStartTime, ringDuration)
+
+                if newKey ~= lastRingKey then
+                    lastKnownRing = {
+                        ringStartTime = ringStartTime,
+                        ringDuration  = ringDuration,
+                        slotIndex     = slot,
+                        playerIdx     = nil,
+                    }
+                end
+
+                if timingOn then
+                    if newKey == lastRingKey and slot then
+                        scheduleExtraSlot(ringStartTime, ringDuration, slot, nil)
+                    else
+                        scheduleHit(ringStartTime, ringDuration, slot, nil)
+                    end
+                end
+            end
+
+            -- ── 2. Baca lastResult dari myState ────────────────────
+            local lr = myState.lastResult
+            if lr and type(lr) == "table" and lr.rating then
+                local rat   = lr.rating
+                local acc   = lr.accuracy    or 0
+                local pts   = lr.points      or 0
+                local scale = lr.targetScale or 0
+
+                local col =
+                    rat == "Perfect" and Color3.fromRGB(50,255,120) or
+                    rat == "Good"    and Color3.fromRGB(200,220,60)  or
+                    rat == "Miss"    and Color3.fromRGB(255,70,70)   or
+                    Color3.fromRGB(180,180,180)
+
+                tLastHitVal.Text = string.format(
+                    "%s  %.1f%%  +%d  sc:%.3f",
+                    rat, acc, pts, scale
+                )
+                tLastHitVal.TextColor3 = col
+
+                if rat == "Perfect" then
+
+                    -- ── AutoTune Offset (sc-based) ──
+                    if accurateModeOn then
+                        table.insert(scSamples, scale)
+                        if #scSamples > SC_BUF_MAX then table.remove(scSamples, 1) end
+                        if #scSamples >= SC_BUF_MAX then
+                            local sum = 0
+                            for _, v in ipairs(scSamples) do sum = sum + v end
+                            local avg   = sum / #scSamples
+                            local error = avg - CONFIG.TARGET_SCALE
+                            local step  = error * TUNE_GAIN
+                            local newOff = math.clamp(CONFIG.TIMING_OFFSET - step, -0.1, 0.4)
+                            CONFIG.TIMING_OFFSET = newOff
+                            if timingOffsetBox then timingOffsetBox.Text = string.format("%.5f", newOff) end
+                            scSamples = {}
+                            tModeVal.Text = string.format("Tune→%.5f (err%+.3f)", newOff, error)
+                            tModeVal.TextColor3 = math.abs(error) < 0.005
+                                and Color3.fromRGB(80,255,140)
+                                or  math.abs(error) < 0.015
+                                    and Color3.fromRGB(200,220,60)
+                                    or  Color3.fromRGB(255,160,50)
+                        else
+                            tModeVal.Text = string.format("Tune: %d/%d sample", #scSamples, SC_BUF_MAX)
+                            tModeVal.TextColor3 = Color3.fromRGB(120,160,255)
+                        end
+                    end
+
+                    -- ── ScoreTune smooth (pts-based) ──
+                    if scoreTuneOn then
+                        table.insert(accSamples, pts)
+                        if #accSamples > ACC_BUF_MAX then table.remove(accSamples, 1) end
+                        if #accSamples >= ACC_BUF_MAX then
+                            local sum = 0
+                            for _, v in ipairs(accSamples) do sum = sum + v end
+                            local avgPts = sum / #accSamples
+                            if lastAvgAcc > 0 and avgPts < lastAvgAcc then
+                                scoreTuneDir = -scoreTuneDir
+                            end
+                            local newOff = math.clamp(
+                                CONFIG.TIMING_OFFSET + scoreTuneDir * SCORE_STEP, -0.1, 0.4
+                            )
+                            lastAvgAcc           = avgPts
+                            CONFIG.TIMING_OFFSET = newOff
+                            if timingOffsetBox then timingOffsetBox.Text = string.format("%.5f", newOff) end
+                            accSamples = {}
+                            tModeVal.Text = string.format("Skor %.0f pts→%.5f", avgPts, newOff)
+                            tModeVal.TextColor3 = avgPts >= 180
+                                and Color3.fromRGB(80,255,140)
+                                or  avgPts >= 120
+                                    and Color3.fromRGB(200,220,60)
+                                    or  Color3.fromRGB(255,160,50)
+                        else
+                            tModeVal.Text = string.format(
+                                "Skor: %d/%d (%.0f pts)", #accSamples, ACC_BUF_MAX, pts
+                            )
+                            tModeVal.TextColor3 = Color3.fromRGB(255,200,60)
+                        end
+                    end
+
+                    -- ── ScoreTune Agresif ──
+                    if scoreTuneAggroOn then
+                        table.insert(aggroSamples, pts)
+                        if #aggroSamples > AGGRO_BUF_MAX then table.remove(aggroSamples, 1) end
+                        if #aggroSamples >= AGGRO_BUF_MAX then
+                            local sum = 0
+                            for _, v in ipairs(aggroSamples) do sum = sum + v end
+                            local avgPts = sum / #aggroSamples
+                            if aggroLastAvgAcc > 0 and avgPts < aggroLastAvgAcc then
+                                aggroDir = -aggroDir
+                            end
+                            local newOff = math.clamp(
+                                CONFIG.TIMING_OFFSET + aggroDir * AGGRO_STEP, -0.1, 0.4
+                            )
+                            aggroLastAvgAcc      = avgPts
+                            CONFIG.TIMING_OFFSET = newOff
+                            if timingOffsetBox then timingOffsetBox.Text = string.format("%.5f", newOff) end
+                            aggroSamples = {}
+                            if avgPts >= 180 then
+                                scoreTuneAggroOn = false
+                                setToggleVisual(scoreTuneAggroBtn, scoreTuneAggroKnob, false)
+                                scoreTuneOn  = true
+                                accSamples   = {}
+                                lastAvgAcc   = 0
+                                scoreTuneDir = -1
+                                setToggleVisual(scoreTuneBtn, scoreTuneKnob, true)
+                                tModeVal.Text       = "✅ Auto→Smooth"
+                                tModeVal.TextColor3 = Color3.fromRGB(80,255,140)
+                            else
+                                tModeVal.Text = string.format("⚡ %.0f pts→%.5f", avgPts, newOff)
+                                tModeVal.TextColor3 = avgPts >= 120
+                                    and Color3.fromRGB(255,160,50)
+                                    or  Color3.fromRGB(255,80,80)
+                            end
+                        else
+                            tModeVal.Text = string.format(
+                                "⚡ %d/%d (%.0f pts)", #aggroSamples, AGGRO_BUF_MAX, pts
+                            )
+                            tModeVal.TextColor3 = Color3.fromRGB(255,120,60)
+                        end
+                    end
+
+                elseif rat == "Good" then
+                elseif rat == "Miss" then
+                end
+            end
+        end)
+        if not ok then warn("[AutoTiming] Parse error: " .. tostring(err)) end
+    end)
+else
+end
+
+-- ================================================
+-- DROPDOWN
+-- ================================================
+local function onSelectTable(idx)
+    selectedTable    = idx
+    dropBtn.Text     = string.format("Meja  %d  ▼", idx)
+    dropList.Visible = false
+    side1Val.Text    = "—"
+    side2Val.Text    = "—"
+    -- highlight overlay langsung
+    if overlayOn then
+        if #overlayBills > 0 then
+            refreshHighlight()
+        else
+            buildOverlay()
+        end
+    end
+end
+
+local function populateDropdown()
+    for _, c in ipairs(dropList:GetChildren()) do
+        if c:IsA("TextButton") then c:Destroy() end
+    end
+    local tables = getAllTables()
+    local itemH  = 30
+    for i = 1, #tables do
+        local item = Instance.new("TextButton")
+        item.Size = UDim2.new(1,0,0,itemH); item.BackgroundColor3 = Color3.fromRGB(25,25,35)
+        item.Text = string.format("Meja  %d", i); item.TextColor3 = Color3.fromRGB(200,210,220)
+        item.TextSize = 12; item.Font = Enum.Font.Gotham
+        item.AutoButtonColor = false; item.BorderSizePixel = 0
+        item.ZIndex = 21; item.Parent = dropList
+        item.MouseEnter:Connect(function() item.BackgroundColor3 = Color3.fromRGB(35,40,55) end)
+        item.MouseLeave:Connect(function() item.BackgroundColor3 = Color3.fromRGB(25,25,35) end)
+        local idx = i
+        item.MouseButton1Click:Connect(function() onSelectTable(idx) end)
+    end
+    dropList.CanvasSize = UDim2.new(0,0,0,#tables * itemH)
+    dropList.Size       = UDim2.new(0,248,0,math.min(#tables,6) * itemH)
+end
+
+dropBtn.MouseButton1Click:Connect(function()
+    populateDropdown()
+    local abs = dropBtn.AbsolutePosition
+    local sz  = dropBtn.AbsoluteSize
+    dropList.Position = UDim2.new(0, abs.X, 0, abs.Y + sz.Y + 4)
+    dropList.Visible  = not dropList.Visible
+end)
+
+UserInputService.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+        if dropList.Visible then dropList.Visible = false end
+    end
+end)
+
+-- ================================================
+-- SCAN LOOP
+-- ================================================
+local function readSide(tbl, sideName)
+    local board = tbl:FindFirstChild("PopcornBurstBoard")
+    if not board then return "⚠ PopcornBurstBoard tidak ditemukan" end
+    local side = board:FindFirstChild(sideName)
+    if not side then return "⚠ " .. sideName .. " tidak ditemukan" end
+
+    if side:IsA("StringValue") or side:IsA("IntValue") or side:IsA("NumberValue")
+        or side:IsA("BoolValue") or side:IsA("ObjectValue") then
+        return tostring(side.Value)
+    end
+
+    -- Model / Part: tampilkan class + child pertama
+    local info     = "[" .. side.ClassName .. "]"
+    local children = side:GetChildren()
+    if #children > 0 then
+        local names = {}
+        for j = 1, math.min(4, #children) do
+            table.insert(names, children[j].Name)
+        end
+        info = info .. " " .. table.concat(names, ", ")
+        if #children > 4 then info = info .. "…" end
+    end
+    return info
+end
+
+task.spawn(function()
+    while scriptActive do
+        task.wait(CONFIG.SCAN_INTERVAL)
+        if scanOn and selectedTable then
+            local tables = getAllTables()
+            if selectedTable <= #tables then
+                local tbl    = tables[selectedTable]
+                local ok1, v1 = pcall(readSide, tbl, "Side1")
+                local ok2, v2 = pcall(readSide, tbl, "Side2")
+                side1Val.Text = ok1 and v1 or ("ERR: "..tostring(v1))
+                side2Val.Text = ok2 and v2 or ("ERR: "..tostring(v2))
+            else
+                side1Val.Text = "⚠ indeks meja tidak ada"
+                side2Val.Text = "⚠ indeks meja tidak ada"
+            end
+        end
+    end
+end)
+
+-- ================================================
+-- AUTO PLAY
+-- ================================================
+local function doAutoPlay()
+    while autoPlaying do
+        local tables = getAllTables()
+        if #tables == 0 then
+            statusLabel.Text = "⚠  Tidak ada meja ditemukan"
+            task.wait(2)
+        else
+            local target = math.clamp(selectedTable or 1, 1, #tables)
+            local tbl    = tables[target]
+
+            local prompt = tbl:FindFirstChildOfClass("ProximityPrompt")
+                or tbl:FindFirstChild("Prompt", true)
+
+            if prompt and prompt:IsA("ProximityPrompt") then
+                fireproximityprompt(prompt)
+                statusLabel.Text = string.format("✅  Bermain di Meja %d", target)
+            else
+                local remote = tbl:FindFirstChildOfClass("RemoteEvent")
+                    or game:GetService("ReplicatedStorage"):FindFirstChild("PlayMinigame")
+                if remote then
+                    remote:FireServer(tbl)
+                    statusLabel.Text = string.format("✅  Remote fired — Meja %d", target)
+                else
+                    statusLabel.Text = string.format("⚠  Meja %d: prompt tidak ditemukan", target)
+                end
+            end
+        end
+        task.wait(CONFIG.AUTO_PLAY_INTERVAL)
+    end
+end
+
+startBtn.MouseButton1Click:Connect(function()
+    autoPlaying = not autoPlaying
+    if autoPlaying then
+        startBtn.BackgroundColor3 = Color3.fromRGB(180,50,50)
+        startBtn.Text             = "■  Stop Auto Play"
+        statusLabel.Text          = "▶  Auto Play aktif..."
+        statusLabel.TextColor3    = Color3.fromRGB(80,220,140)
+        autoThread = task.spawn(doAutoPlay)
+    else
+        startBtn.BackgroundColor3 = Color3.fromRGB(30,160,100)
+        startBtn.Text             = "▶  Mulai Auto Play"
+        statusLabel.Text          = "⏸  Dihentikan"
+        statusLabel.TextColor3    = Color3.fromRGB(140,160,180)
+        if autoThread then task.cancel(autoThread); autoThread = nil end
+    end
+end)
+
+-- ================================================
+-- Refresh overlay saat spawn ulang
+-- ================================================
+player.CharacterAdded:Connect(function()
+    task.wait(1)
+    if overlayOn then buildOverlay() end
+end)
+
+-- ================================================
+-- WATCHDOG: auto-reset jika tidak ada hit 30 detik
+-- ================================================
+-- lastFiredTime sudah dideklarasi di atas (forward-declare)
+
+task.spawn(function()
+    local TIMEOUT = 30  -- detik tanpa hit → reset
+
+    while scriptActive do
+        task.wait(5)  -- cek tiap 5 detik
+
+        if not timingOn then
+            lastFiredTime = os.clock()  -- reset timer kalau toggle off
+            continue
+        end
+
+        local elapsed = os.clock() - lastFiredTime
+
+        if elapsed >= TIMEOUT then
+            fullResetTimingState()
+        end
+    end
+end)
+
+-- ================================================
+-- CLOSE
+-- ================================================
+closeBtn.MouseButton1Click:Connect(function()
+    autoPlaying      = false
+    scanOn           = false
+    timingOn         = false
+    captureListening = false
+    autoHopOn        = false
+    isHopping        = false
+    scriptActive     = false
+    myPlayerIndex    = nil
+    cancelPendingHit()
+    if autoThread then task.cancel(autoThread); autoThread = nil end
+    clearOverlay()
+    if dropList and dropList.Parent then dropList:Destroy() end
+    if miniPill and miniPill.Parent then miniPill:Destroy() end
+
+    -- Restore print/warn ke original
+    print  = _origPrint
+    warn   = _origWarn
+    consoleBuffer = {}
+
+    screenGui:Destroy()
+end)
+
+-- ================================================
+-- FPS & PING DISPLAY  (lightweight)
+-- ================================================
+do
+    local RS = game:GetService("RunService")
+
+    local fpsPing = Instance.new("ScreenGui")
+    fpsPing.Name           = "FpsPingUI"
+    fpsPing.ResetOnSpawn   = false
+    fpsPing.DisplayOrder   = 999
+    fpsPing.Parent         = playerGui
+
+    local label = Instance.new("TextLabel")
+    label.Size                  = UDim2.new(0, 120, 0, 28)
+    label.Position              = UDim2.new(1, -128, 0, 6)
+    label.BackgroundColor3      = Color3.fromRGB(12, 12, 18)
+    label.BackgroundTransparency = 0.25
+    label.BorderSizePixel       = 0
+    label.Text                  = "FPS: --  Ping: --"
+    label.TextColor3            = Color3.fromRGB(80, 200, 255)
+    label.TextSize              = 11
+    label.Font                  = Enum.Font.GothamBold
+    label.TextXAlignment        = Enum.TextXAlignment.Center
+    label.ZIndex                = 10
+    label.Parent                = fpsPing
+    do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,7); c.Parent = label end
+
+    -- Hitung FPS dari delta time tiap frame
+    local fpsBuffer = {}
+    local lastPing  = 0
+    local pingTimer = 0
+
+    -- ── Ping via GetNetworkPing — universal, jalan di semua executor ──
+
+
+    RS.Heartbeat:Connect(function(dt)
+        -- FPS: rata-rata dari 10 frame terakhir
+        table.insert(fpsBuffer, 1 / dt)
+        if #fpsBuffer > 10 then table.remove(fpsBuffer, 1) end
+
+        -- Update display tiap ~0.5 detik
+        pingTimer = pingTimer + dt
+        if pingTimer < 0.5 then return end
+        pingTimer = 0
+
+        -- Hitung avg FPS
+        local sum = 0
+        for _, v in ipairs(fpsBuffer) do sum = sum + v end
+        local fps = math.round(sum / #fpsBuffer)
+
+        -- Ping via GetNetworkPing (universal, no hook needed)
+        local ping = 0
+        pcall(function()
+            ping = math.round(player:GetNetworkPing() * 1000)
+        end)
+        if ping <= 0 then
+            pcall(function()
+                ping = math.round(game:GetService("Stats").Network.ServerStatsItem["Data Ping"].Value)
+            end)
+        end
+        lastPing = ping
+
+        -- Warna ping: hijau <80ms, kuning <150ms, merah >= 150ms
+        local pingColor =
+            lastPing < 80  and Color3.fromRGB(80, 255, 140) or
+            lastPing < 150 and Color3.fromRGB(255, 200, 60)  or
+            Color3.fromRGB(255, 80, 80)
+
+        label.Text = string.format("FPS: %d  Ping: %dms", fps, lastPing)
+        label.TextColor3 =
+            fps < 30 and Color3.fromRGB(255, 80, 80)  or
+            fps < 50 and Color3.fromRGB(255, 200, 60) or
+            pingColor
+    end)
+end
+
+-- ================================================
+-- FAKE CONSOLE LOOP
+-- ================================================
+task.spawn(function()
+    local hexChars = "0123456789abcdef"
+
+    local function randHex(len)
+        local s = "0x"
+        for _ = 1, len do
+            local idx = math.random(1, #hexChars)
+            s = s .. hexChars:sub(idx, idx)
+        end
+        return s
+    end
+
+    local function randAddr()
+        return randHex(math.random(10, 14))
+    end
+
+    -- Print sekali langsung saat inject
+    task.wait(0.3)
+    _origPrint(string.format("Inject __Index Done    [ptr: %s]", randAddr()))
+    task.wait(0.15)
+    _origPrint(string.format("inject __newindex Done [ptr: %s]", randAddr()))
+    task.wait(0.1)
+    _origPrint(string.format("remake __namecall Done [hook: %s -> %s]", randAddr(), randAddr()))
+
+    local ticker3s  = 0
+    local ticker2m  = 0
+
+    while scriptActive do
+        task.wait(1)
+        ticker3s = ticker3s + 1
+        ticker2m = ticker2m + 1
+
+        if ticker3s >= 3 then
+            ticker3s = 0
+            _origPrint(string.format("Inject __Index Done    [ptr: %s]", randAddr()))
+            task.wait(0.08)
+            _origPrint(string.format("inject __newindex Done [ptr: %s]", randAddr()))
+            task.wait(0.06)
+            _origPrint(string.format("remake __namecall Done [hook: %s -> %s]", randAddr(), randAddr()))
+        end
+
+        if ticker2m >= 120 then
+            ticker2m = 0
+            _origPrint(string.format(
+                "Manipulate Server __namecall [closure: %s | sig: %s%s]",
+                randAddr(), randHex(4), randHex(4)
+            ))
+        end
+    end
+end)
