@@ -923,7 +923,7 @@ screenGui.Parent         = playerGui
 -- Panel — fixed size, bisa di-resize
 local panel = Instance.new("Frame")
 panel.Name             = "Panel"
-panel.Size             = UDim2.new(0, 268, 0, 150)
+panel.Size             = UDim2.new(0, 268, 0, 110)
 panel.Position         = UDim2.new(0, 16, 0.5, -160)
 panel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 panel.BorderSizePixel  = 0
