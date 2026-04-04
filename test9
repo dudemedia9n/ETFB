@@ -952,7 +952,7 @@ miniPill.Visible          = false
 miniPill.ZIndex           = 30
 miniPill.Parent           = screenGui
 do
-    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,17); c.Parent = miniPill
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,7); c.Parent = miniPill
     local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(80,200,255); s.Thickness = 1.5; s.Parent = miniPill
 end
 
@@ -1238,9 +1238,7 @@ do
     layout.VerticalAlignment   = Enum.VerticalAlignment.Center
     layout.Parent              = presetRow
 
-    local PRESETS = {
-        { label = "Perfect",    scale = 0.53, offset = 0.02,    color = Color3.fromRGB(80,220,140)  },
-    }
+    local PRESETS = {}
 
     for _, preset in ipairs(PRESETS) do
         local btn = Instance.new("TextButton")
