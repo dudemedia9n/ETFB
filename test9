@@ -923,7 +923,7 @@ screenGui.Parent         = playerGui
 -- Panel — fixed size, bisa di-resize
 local panel = Instance.new("Frame")
 panel.Name             = "Panel"
-panel.Size             = UDim2.new(0, 268, 0, 110)
+panel.Size             = UDim2.new(0, 268, 0, 120)
 panel.Position         = UDim2.new(0, 16, 0.5, -160)
 panel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 panel.BorderSizePixel  = 0
@@ -1010,12 +1010,11 @@ titleLabel.Font               = Enum.Font.GothamBold
 titleLabel.TextXAlignment     = Enum.TextXAlignment.Left
 titleLabel.Parent             = header
 
-
 -- Close Button (X pakai ImageLabel agar tidak jadi kotak)
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size             = UDim2.new(0,26,0,26)
 closeBtn.Position         = UDim2.new(1,-32,0.5,-13)
-closeBtn.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
+closeBtn.BackgroundColor3 = Color3.fromRGB(180,50,50)
 closeBtn.Text             = ""
 closeBtn.AutoButtonColor  = false
 closeBtn.BorderSizePixel  = 0
@@ -1029,7 +1028,7 @@ do
         local l = Instance.new("Frame")
         l.Size             = UDim2.new(0,14,0,2)
         l.Position         = UDim2.new(0.5,-7,0.5,-1)
-        l.BackgroundColor3 = Color3.fromRGB(255,210,210)
+        l.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
         l.BorderSizePixel  = 0
         l.Rotation         = rot
         l.ZIndex           = 6
@@ -1071,6 +1070,24 @@ do
     p.PaddingBottom = UDim.new(0,10)
     p.Parent        = scrollBody
 end
+
+-- ── Resize Handle (pojok kanan bawah) ─────────────
+local resizeHandle = Instance.new("TextButton")
+resizeHandle.Name             = "ResizeHandle"
+resizeHandle.Size             = UDim2.new(0, 20, 0, 12)
+resizeHandle.Position         = UDim2.new(1, -20, 1, -12)
+resizeHandle.BackgroundColor3 = Color3.fromRGB(60,70,90)
+resizeHandle.Text             = "⠿"
+resizeHandle.TextColor3       = Color3.fromRGB(100,140,180)
+resizeHandle.TextSize         = 10
+resizeHandle.Font             = Enum.Font.Gotham
+resizeHandle.AutoButtonColor  = false
+resizeHandle.BorderSizePixel  = 0
+resizeHandle.ZIndex           = 6
+resizeHandle.Parent           = panel
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,4); c.Parent = resizeHandle end
+resizeHandle.MouseEnter:Connect(function() resizeHandle.BackgroundColor3 = Color3.fromRGB(80,100,130) end)
+resizeHandle.MouseLeave:Connect(function() resizeHandle.BackgroundColor3 = Color3.fromRGB(60,70,90) end)
 
 -- Logika resize drag
 local resizing        = false
