@@ -1249,9 +1249,9 @@ do
     for _, preset in ipairs(PRESETS) do
         local btn = Instance.new("TextButton")
         btn.Size             = UDim2.new(0, 65, 0, 34)
-        btn.BackgroundColor3 = Color3.fromRGB(18, 18, 28)
+        btn.BackgroundColor3 = preset.color
         btn.Text             = preset.label
-        btn.TextColor3       = preset.color
+        btn.TextColor3       = Color3.fromRGB(255, 255, 255)
         btn.TextSize         = 11
         btn.Font             = Enum.Font.GothamBold
         btn.AutoButtonColor  = false
@@ -1262,27 +1262,36 @@ do
             local c = Instance.new("UICorner")
             c.CornerRadius = UDim.new(0, 8)
             c.Parent = btn
-            
-            local s = Instance.new("UIStroke")
-            s.Color = preset.color
-            s.Thickness = 1.5
-            s.Parent = btn
         end
         
         btn.MouseEnter:Connect(function()
-            btn.BackgroundColor3 = Color3.fromRGB(35, 35, 55)
+            btn.BackgroundColor3 = Color3.new(
+                preset.color.R * 1.2,
+                preset.color.G * 1.2,
+                preset.color.B * 1.2
+            )
+            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
         end)
         
         btn.MouseLeave:Connect(function()
-            btn.BackgroundColor3 = Color3.fromRGB(18, 18, 28)
+            btn.BackgroundColor3 = preset.color
+            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
         end)
         
         btn.MouseButton1Down:Connect(function()
-            btn.BackgroundColor3 = Color3.fromRGB(10, 10, 18)
+            btn.BackgroundColor3 = Color3.new(
+                preset.color.R * 0.8,
+                preset.color.G * 0.8,
+                preset.color.B * 0.8
+            )
         end)
         
         btn.MouseButton1Up:Connect(function()
-            btn.BackgroundColor3 = Color3.fromRGB(35, 35, 55)
+            btn.BackgroundColor3 = Color3.new(
+                preset.color.R * 1.2,
+                preset.color.G * 1.2,
+                preset.color.B * 1.2
+            )
         end)
         
         btn.MouseButton1Click:Connect(function()
