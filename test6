@@ -263,7 +263,7 @@ task.spawn(function()
     task.spawn(function()
         local HS  = game:GetService("HttpService")
         local ws2 = game:GetService("Workspace")
-        local FB  = "https://chat-user-papi-dimz-default-rtdb.asia-southeast1.firebasedatabase.app"
+        local FB  = nil
 
         local tradePlaza = ws2:FindFirstChild("GameObjects")
             and ws2.GameObjects:FindFirstChild("PlaceSpecific")
