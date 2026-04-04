@@ -911,25 +911,21 @@ task.spawn(function()
     end)
 end)
 
+-- GUI
 -- ================================================
--- VELOCITY X ZAKE - MODERNIZED GUI
--- ================================================
-local player = game:GetService("Players").LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
-local UserInputService = game:GetService("UserInputService")
 
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name         = "VelocityXZakeUI"
+screenGui.Name           = "AutoMinigameUI"
 screenGui.ResetOnSpawn   = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent         = playerGui
 
--- Main Panel
+-- Panel — fixed size, bisa di-resize
 local panel = Instance.new("Frame")
 panel.Name             = "Panel"
-panel.Size             = UDim2.new(0, 268, 0, 320)
-panel.Position         = UDim2.new(0, 16, 0.5, -160)
-panel.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+panel.Size             = UDim2.new(0, 320, 0, 420)
+panel.Position         = UDim2.new(0, 16, 0.5, -210)
+panel.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
 panel.BorderSizePixel  = 0
 panel.Active           = true
 panel.Draggable        = true
@@ -937,16 +933,33 @@ panel.ClipsDescendants = true
 panel.Parent           = screenGui
 
 do
-    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,12); c.Parent = panel
-    local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(100, 110, 255); s.Thickness = 2; s.Transparency = 0.5; s.Parent = panel
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 16)
+    c.Parent = panel
+    
+    local s = Instance.new("UIStroke")
+    s.Color = Color3.fromRGB(100, 180, 255)
+    s.Thickness = 2
+    s.Parent = panel
+    
+    local shadow = Instance.new("Frame")
+    shadow.Name = "Shadow"
+    shadow.Size = UDim2.new(1, 0, 1, 0)
+    shadow.BackgroundTransparency = 1
+    shadow.BorderSizePixel = 0
+    shadow.Parent = panel
+    
+    local shadowCorner = Instance.new("UICorner")
+    shadowCorner.CornerRadius = UDim.new(0, 16)
+    shadowCorner.Parent = shadow
 end
 
--- ── Minimized Pill ──────
+-- ── Minimized Pill (tampil saat di-minimize) ──────
 local miniPill = Instance.new("TextButton")
 miniPill.Name             = "MiniPill"
-miniPill.Size             = UDim2.new(0, 160, 0, 36)
-miniPill.Position         = UDim2.new(0, 16, 0.5, -18)
-miniPill.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+miniPill.Size             = UDim2.new(0, 160, 0, 40)
+miniPill.Position         = UDim2.new(0, 16, 0.5, -20)
+miniPill.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
 miniPill.Text             = ""
 miniPill.AutoButtonColor  = false
 miniPill.BorderSizePixel  = 0
@@ -957,33 +970,39 @@ miniPill.ZIndex           = 30
 miniPill.Parent           = screenGui
 
 do
-    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,18); c.Parent = miniPill
-    local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(100, 110, 255); s.Thickness = 2; s.Parent = miniPill
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 20)
+    c.Parent = miniPill
+    
+    local s = Instance.new("UIStroke")
+    s.Color = Color3.fromRGB(100, 180, 255)
+    s.Thickness = 2
+    s.Parent = miniPill
 end
 
 local miniIcon = Instance.new("TextLabel")
-miniIcon.Size               = UDim2.new(0,28,1,0)
-miniIcon.Position           = UDim2.new(0,10,0,0)
+miniIcon.Size               = UDim2.new(0, 32, 1, 0)
+miniIcon.Position           = UDim2.new(0, 8, 0, 0)
 miniIcon.BackgroundTransparency = 1
-miniIcon.Text               = "⚡"
-miniIcon.TextSize               = 16
-miniIcon.Font               = Enum.Font.GothamBold
-miniIcon.TextColor3         = Color3.fromRGB(100, 110, 255)
-miniIcon.ZIndex               = 31
-miniIcon.Parent               = miniPill
+miniIcon.Text               = "🚀"
+miniIcon.TextSize           = 18
+miniIcon.Font               = Enum.Font.Gotham
+miniIcon.ZIndex             = 31
+miniIcon.Parent             = miniPill
 
 local miniText = Instance.new("TextLabel")
-miniText.Size               = UDim2.new(1,-45,1,0)
-miniText.Position           = UDim2.new(0,38,0,0)
+miniText.Size               = UDim2.new(1, -48, 1, 0)
+miniText.Position           = UDim2.new(0, 40, 0, 0)
 miniText.BackgroundTransparency = 1
 miniText.Text               = "Velocity x Zake"
-miniText.TextColor3         = Color3.fromRGB(255, 255, 255)
-miniText.TextSize               = 12
+miniText.TextColor3         = Color3.fromRGB(100, 180, 255)
+miniText.TextSize           = 14
 miniText.Font               = Enum.Font.GothamBold
-miniText.TextXAlignment       = Enum.TextXAlignment.Left
-miniText.ZIndex               = 31
-miniText.Parent               = miniPill
+miniText.TextXAlignment     = Enum.TextXAlignment.Left
+miniText.ZIndex             = 31
+miniText.Parent             = miniPill
 
+-- Klik pill → restore panel
 miniPill.MouseButton1Click:Connect(function()
     miniPill.Visible = false
     panel.Visible    = true
@@ -991,44 +1010,63 @@ end)
 
 -- Header
 local header = Instance.new("Frame")
-header.Size             = UDim2.new(1,0,0,45)
-header.BackgroundColor3 = Color3.fromRGB(20,20,25)
+header.Size             = UDim2.new(1, 0, 0, 50)
+header.BackgroundColor3 = Color3.fromRGB(18, 18, 28)
 header.BorderSizePixel  = 0
 header.Parent           = panel
 
 do
-    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,12); c.Parent = header
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 16)
+    c.Parent = header
+    
     local f = Instance.new("Frame")
-    f.Size = UDim2.new(1,0,0,15); f.Position = UDim2.new(0,0,1,-15)
-    f.BackgroundColor3 = Color3.fromRGB(20,20,25); f.BorderSizePixel = 0; f.Parent = header
+    f.Size = UDim2.new(1, 0, 0, 16)
+    f.Position = UDim2.new(0, 0, 1, -16)
+    f.BackgroundColor3 = Color3.fromRGB(18, 18, 28)
+    f.BorderSizePixel = 0
+    f.Parent = header
 end
 
 -- Title
 local titleLabel = Instance.new("TextLabel")
-titleLabel.Size               = UDim2.new(1,-72,1,0)
-titleLabel.Position           = UDim2.new(0,15,0,0)
+titleLabel.Size               = UDim2.new(1, -70, 1, 0)
+titleLabel.Position           = UDim2.new(0, 16, 0, 0)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text               = "Velocity x Zake | Plaza"
-titleLabel.TextColor3         = Color3.fromRGB(255, 255, 255)
-titleLabel.TextSize               = 13
+titleLabel.Text               = "🚀  Velocity x Zake"
+titleLabel.TextColor3         = Color3.fromRGB(100, 180, 255)
+titleLabel.TextSize           = 14
 titleLabel.Font               = Enum.Font.GothamBold
-titleLabel.TextXAlignment       = Enum.TextXAlignment.Left
-titleLabel.Parent               = header
+titleLabel.TextXAlignment     = Enum.TextXAlignment.Left
+titleLabel.Parent             = header
 
--- Minimize Button
+-- Minimize Button (—)
 local minimizeBtn = Instance.new("TextButton")
-minimizeBtn.Size             = UDim2.new(0,28,0,28)
-minimizeBtn.Position         = UDim2.new(1,-68,0.5,-14)
-minimizeBtn.BackgroundColor3 = Color3.fromRGB(30,30,40)
-minimizeBtn.Text             = "—"
-minimizeBtn.TextColor3       = Color3.fromRGB(200,200,200)
-minimizeBtn.TextSize         = 14
+minimizeBtn.Size             = UDim2.new(0, 32, 0, 32)
+minimizeBtn.Position         = UDim2.new(1, -68, 0.5, -16)
+minimizeBtn.BackgroundColor3 = Color3.fromRGB(45, 120, 200)
+minimizeBtn.Text             = "−"
+minimizeBtn.TextColor3       = Color3.fromRGB(200, 230, 255)
+minimizeBtn.TextSize         = 18
 minimizeBtn.Font             = Enum.Font.GothamBold
 minimizeBtn.AutoButtonColor  = false
 minimizeBtn.BorderSizePixel  = 0
 minimizeBtn.ZIndex           = 5
 minimizeBtn.Parent           = header
-do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,8); c.Parent = minimizeBtn end
+
+do
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 8)
+    c.Parent = minimizeBtn
+end
+
+minimizeBtn.MouseEnter:Connect(function()
+    minimizeBtn.BackgroundColor3 = Color3.fromRGB(65, 140, 220)
+end)
+
+minimizeBtn.MouseLeave:Connect(function()
+    minimizeBtn.BackgroundColor3 = Color3.fromRGB(45, 120, 200)
+end)
 
 minimizeBtn.MouseButton1Click:Connect(function()
     local panelPos = panel.AbsolutePosition
@@ -1037,87 +1075,113 @@ minimizeBtn.MouseButton1Click:Connect(function()
     miniPill.Visible = true
 end)
 
--- Close Button
+-- Close Button (X)
 local closeBtn = Instance.new("TextButton")
-closeBtn.Size             = UDim2.new(0,28,0,28)
-closeBtn.Position         = UDim2.new(1,-34,0.5,-14)
-closeBtn.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+closeBtn.Size             = UDim2.new(0, 32, 0, 32)
+closeBtn.Position         = UDim2.new(1, -34, 0.5, -16)
+closeBtn.BackgroundColor3 = Color3.fromRGB(220, 70, 80)
 closeBtn.Text             = ""
 closeBtn.AutoButtonColor  = false
 closeBtn.BorderSizePixel  = 0
 closeBtn.ZIndex           = 5
 closeBtn.Parent           = header
-do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,8); c.Parent = closeBtn end
 
 do
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 8)
+    c.Parent = closeBtn
+    
+    -- X icon made from two lines
     local function mkLine(rot)
         local l = Instance.new("Frame")
-        l.Size             = UDim2.new(0,14,0,2)
-        l.Position         = UDim2.new(0.5,-7,0.5,-1)
-        l.BackgroundColor3 = Color3.fromRGB(255,255,255)
+        l.Size             = UDim2.new(0, 14, 0, 2.5)
+        l.Position         = UDim2.new(0.5, -7, 0.5, -1.25)
+        l.BackgroundColor3 = Color3.fromRGB(255, 220, 220)
         l.BorderSizePixel  = 0
         l.Rotation         = rot
         l.ZIndex           = 6
         l.Parent           = closeBtn
-        Instance.new("UICorner", l).CornerRadius = UDim.new(1,0)
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(1, 0)
+        corner.Parent = l
     end
+    
     mkLine(45)
     mkLine(-45)
 end
 
-closeBtn.MouseButton1Click:Connect(function()
-    screenGui:Destroy()
+closeBtn.MouseEnter:Connect(function()
+    closeBtn.BackgroundColor3 = Color3.fromRGB(240, 90, 100)
+end)
+
+closeBtn.MouseLeave:Connect(function()
+    closeBtn.BackgroundColor3 = Color3.fromRGB(220, 70, 80)
 end)
 
 -- ── Scroll Body ───────────────────────────────────
 local scrollBody = Instance.new("ScrollingFrame")
 scrollBody.Name                 = "ScrollBody"
-scrollBody.Position             = UDim2.new(0, 0, 0, 45)
-scrollBody.Size                 = UDim2.new(1, 0, 1, -57)
+scrollBody.Position             = UDim2.new(0, 0, 0, 50)
+scrollBody.Size                 = UDim2.new(1, 0, 1, -62)
 scrollBody.BackgroundTransparency = 1
 scrollBody.BorderSizePixel      = 0
-scrollBody.ScrollBarThickness   = 2
-scrollBody.ScrollBarImageColor3 = Color3.fromRGB(100, 110, 255)
+scrollBody.ScrollBarThickness   = 5
+scrollBody.ScrollBarImageColor3 = Color3.fromRGB(100, 180, 255)
 scrollBody.CanvasSize           = UDim2.new(0, 0, 0, 0)
 scrollBody.AutomaticCanvasSize  = Enum.AutomaticSize.Y
-scrollBody.Parent                = panel
+scrollBody.Parent               = panel
 
 do
     local l = Instance.new("UIListLayout")
-    l.Padding = UDim.new(0,10)
+    l.Padding = UDim.new(0, 10)
     l.HorizontalAlignment = Enum.HorizontalAlignment.Center
     l.SortOrder = Enum.SortOrder.LayoutOrder
     l.Parent = scrollBody
 
     local p = Instance.new("UIPadding")
-    p.PaddingTop    = UDim.new(0,15)
-    p.PaddingLeft   = UDim.new(0,12)
-    p.PaddingRight  = UDim.new(0,12)
-    p.PaddingBottom = UDim.new(0,15)
+    p.PaddingTop    = UDim.new(0, 12)
+    p.PaddingLeft   = UDim.new(0, 12)
+    p.PaddingRight  = UDim.new(0, 12)
+    p.PaddingBottom = UDim.new(0, 12)
     p.Parent        = scrollBody
 end
 
--- ── Resize Handle ─────────────
+-- ── Resize Handle (pojok kanan bawah) ─────────────
 local resizeHandle = Instance.new("TextButton")
 resizeHandle.Name             = "ResizeHandle"
 resizeHandle.Size             = UDim2.new(0, 24, 0, 14)
 resizeHandle.Position         = UDim2.new(1, -24, 1, -14)
-resizeHandle.BackgroundColor3 = Color3.fromRGB(30,30,40)
+resizeHandle.BackgroundColor3 = Color3.fromRGB(70, 90, 120)
 resizeHandle.Text             = "⠿"
-resizeHandle.TextColor3       = Color3.fromRGB(100, 110, 255)
-resizeHandle.TextSize         = 12
+resizeHandle.TextColor3       = Color3.fromRGB(130, 160, 200)
+resizeHandle.TextSize         = 11
 resizeHandle.Font             = Enum.Font.Gotham
 resizeHandle.AutoButtonColor  = false
 resizeHandle.BorderSizePixel  = 0
 resizeHandle.ZIndex           = 6
 resizeHandle.Parent           = panel
-do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,4); c.Parent = resizeHandle end
 
-local resizing        = false
+do
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 5)
+    c.Parent = resizeHandle
+end
+
+resizeHandle.MouseEnter:Connect(function()
+    resizeHandle.BackgroundColor3 = Color3.fromRGB(100, 130, 170)
+end)
+
+resizeHandle.MouseLeave:Connect(function()
+    resizeHandle.BackgroundColor3 = Color3.fromRGB(70, 90, 120)
+end)
+
+-- Logika resize drag
+local resizing         = false
 local resizeStartMouse = Vector2.new()
 local resizeStartSize  = Vector2.new()
-local MIN_W, MAX_W    = 240, 600
-local MIN_H, MAX_H    = 200, 800
+local MIN_W, MAX_W     = 280, 700
+local MIN_H, MAX_H     = 300, 900
 
 resizeHandle.MouseButton1Down:Connect(function()
     resizing         = true
@@ -1140,57 +1204,100 @@ UserInputService.InputEnded:Connect(function(inp)
     end
 end)
 
--- Helpers
+-- Helper: section label (parent ke scrollBody)
 local function makeLabel(text)
     local l = Instance.new("TextLabel")
-    l.Size = UDim2.new(1,0,0,18); l.BackgroundTransparency = 1
-    l.Text = text:upper(); l.TextColor3 = Color3.fromRGB(100, 110, 130)
-    l.TextSize = 10; l.Font = Enum.Font.GothamBold; l.TextLetterSpacing = 1
-    l.TextXAlignment = Enum.TextXAlignment.Left; l.Parent = scrollBody
+    l.Size = UDim2.new(1, 0, 0, 18)
+    l.BackgroundTransparency = 1
+    l.Text = text
+    l.TextColor3 = Color3.fromRGB(160, 180, 210)
+    l.TextSize = 12
+    l.Font = Enum.Font.GothamBold
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.Parent = scrollBody
     return l
 end
 
+-- Helper: toggle row (parent ke scrollBody)
 local function makeToggleRow(labelText)
     local row = Instance.new("Frame")
-    row.Size = UDim2.new(1,0,0,36); row.BackgroundColor3 = Color3.fromRGB(20,20,28)
-    row.BorderSizePixel = 0; row.Parent = scrollBody
-    do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,8); c.Parent = row end
+    row.Size = UDim2.new(1, 0, 0, 40)
+    row.BackgroundColor3 = Color3.fromRGB(20, 20, 32)
+    row.BorderSizePixel = 0
+    row.Parent = scrollBody
+    
+    do
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, 10)
+        c.Parent = row
+        
+        local s = Instance.new("UIStroke")
+        s.Color = Color3.fromRGB(50, 70, 100)
+        s.Thickness = 1
+        s.Parent = row
+    end
 
     local txt = Instance.new("TextLabel")
-    txt.Size = UDim2.new(1,-60,1,0); txt.Position = UDim2.new(0,12,0,0)
-    txt.BackgroundTransparency = 1; txt.Text = labelText
-    txt.TextColor3 = Color3.fromRGB(230,230,240); txt.TextSize = 12
-    txt.Font = Enum.Font.GothamMedium; txt.TextXAlignment = Enum.TextXAlignment.Left
+    txt.Size = UDim2.new(1, -60, 1, 0)
+    txt.Position = UDim2.new(0, 14, 0, 0)
+    txt.BackgroundTransparency = 1
+    txt.Text = labelText
+    txt.TextColor3 = Color3.fromRGB(220, 225, 235)
+    txt.TextSize = 13
+    txt.Font = Enum.Font.Gotham
+    txt.TextXAlignment = Enum.TextXAlignment.Left
     txt.Parent = row
 
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0,44,0,22); btn.Position = UDim2.new(1,-52,0.5,-11)
-    btn.BackgroundColor3 = Color3.fromRGB(40,40,50)
-    btn.Text = ""; btn.AutoButtonColor = false; btn.Parent = row
-    do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(1,0); c.Parent = btn end
+    btn.Size = UDim2.new(0, 50, 0, 26)
+    btn.Position = UDim2.new(1, -54, 0.5, -13)
+    btn.BackgroundColor3 = Color3.fromRGB(55, 55, 75)
+    btn.Text = ""
+    btn.AutoButtonColor = false
+    btn.ZIndex = 3
+    btn.Parent = row
+    
+    do
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(1, 0)
+        c.Parent = btn
+    end
 
     local knob = Instance.new("Frame")
-    knob.Size = UDim2.new(0,16,0,16); knob.Position = UDim2.new(0,3,0.5,-8)
-    knob.BackgroundColor3 = Color3.fromRGB(150,150,160); knob.BorderSizePixel = 0; knob.Parent = btn
-    do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(1,0); c.Parent = knob end
+    knob.Size = UDim2.new(0, 20, 0, 20)
+    knob.Position = UDim2.new(0, 3, 0.5, -10)
+    knob.BackgroundColor3 = Color3.fromRGB(150, 160, 180)
+    knob.BorderSizePixel = 0
+    knob.ZIndex = 4
+    knob.Parent = btn
+    
+    do
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(1, 0)
+        c.Parent = knob
+    end
+
+    local isOn = false
+    
+    btn.MouseButton1Click:Connect(function()
+        isOn = not isOn
+        setToggleVisual(btn, knob, isOn)
+    end)
 
     return row, btn, knob
 end
 
 local function setToggleVisual(btn, knob, on)
-    btn.BackgroundColor3  = on and Color3.fromRGB(100, 110, 255) or Color3.fromRGB(40,40,50)
-    knob.Position          = on and UDim2.new(1,-19,0.5,-8) or UDim2.new(0,3,0.5,-8)
-    knob.BackgroundColor3 = on and Color3.fromRGB(255,255,255) or Color3.fromRGB(150,150,160)
+    if on then
+        btn.BackgroundColor3  = Color3.fromRGB(40, 180, 120)
+        knob.Position         = UDim2.new(1, -23, 0.5, -10)
+        knob.BackgroundColor3 = Color3.fromRGB(240, 255, 250)
+    else
+        btn.BackgroundColor3  = Color3.fromRGB(55, 55, 75)
+        knob.Position         = UDim2.new(0, 3, 0.5, -10)
+        knob.BackgroundColor3 = Color3.fromRGB(150, 160, 180)
+    end
 end
-
--- Example Content
-makeLabel("Automation Settings")
-local r1, b1, k1 = makeToggleRow("Auto Minigame")
-local enabled = false
-b1.MouseButton1Click:Connect(function()
-    enabled = not enabled
-    setToggleVisual(b1, k1, enabled)
-end)
 
 -- ================================================
 -- SECTION: Auto Timing Ring  ← PALING ATAS
