@@ -1,0 +1,73 @@
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- State Variables
+local isFrozen = false
+local frozenCFrame = nil
+
+-- UI Creation
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "FreezeGUI"
+screenGui.IgnoreGuiInset = true
+screenGui.ResetOnSpawn = false -- Keeps GUI active after death
+screenGui.Parent = playerGui
+
+local toggleButton = Instance.new("TextButton")
+toggleButton.Size = UDim2.new(0, 200, 0, 50)
+toggleButton.Position = UDim2.new(0.5, -100, 0.8, 0)
+toggleButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleButton.Text = "Freeze: OFF"
+toggleButton.Font = Enum.Font.SourceSansBold
+toggleButton.TextSize = 24
+toggleButton.Parent = screenGui
+
+-- UI Styling (Corner)
+local uiCorner = Instance.new("UICorner")
+uiCorner.CornerRadius = UDim.new(0, 8)
+uiCorner.Parent = toggleButton
+
+-- Logic Functions
+local function toggleFreeze()
+    local character = player.Character
+    if not character then return end
+    
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return end
+
+    isFrozen = not isFrozen
+
+    if isFrozen then
+        -- Get position of the base/root when user executes
+        frozenCFrame = rootPart.CFrame
+        rootPart.Anchored = true
+        
+        toggleButton.Text = "Freeze: ON"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    else
+        rootPart.Anchored = false
+        frozenCFrame = nil
+        
+        toggleButton.Text = "Freeze: OFF"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    end
+end
+
+-- Force Position Loop (Ensures zero budge even if physics glitched)
+RunService.RenderStepped:Connect(function()
+    if isFrozen and frozenCFrame then
+        local character = player.Character
+        local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+        if rootPart then
+            rootPart.CFrame = frozenCFrame
+            rootPart.Anchored = true -- Redundant check to prevent external unanchoring
+        end
+    end
+end)
+
+-- Connect Click Event
+toggleButton.MouseButton1Click:Connect(toggleFreeze)
