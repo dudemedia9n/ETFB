@@ -1,0 +1,1134 @@
+-- -- Wait for game to fully load
+repeat task.wait() until game:IsLoaded()
+
+local player = game.Players.LocalPlayer
+repeat task.wait() until player.Character
+local char = player.Character
+local hrp = char:WaitForChild("HumanoidRootPart")
+local playerGui = player:WaitForChild("PlayerGui")
+local mouse = player:GetMouse()
+
+-- Wait for essential services
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local GuiService = game:GetService("GuiService")
+local TeleportService = game:GetService("TeleportService")
+local Workspace = game:GetService("Workspace")
+local HttpService = game:GetService("HttpService")
+local UserInputService = game:GetService("UserInputService")
+
+-- Relay Webhook
+local WEBHOOK_URL = "https://jnkie.com/api/v1/webhooks/relay/29343154-f5ac-4815-92cb-317ad3d03e26/send"
+
+local function sendWebhook(msg)
+    pcall(function()
+        HttpService:PostAsync(WEBHOOK_URL, HttpService:JSONEncode({
+            ["content"] = msg
+        }))
+    end) -- [cite: 116]
+end
+
+-- Unified Config File
+local CONFIG_FILE = "ArenaV3/config.txt"
+
+-- ANIMATION SYSTEM
+local animationEnabled = true
+local currentAnimTrack = nil
+
+local function playAnimation(character)
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+    
+    pcall(function()
+        -- Stop any existing animation track
+        if currentAnimTrack then
+            currentAnimTrack:Stop()
+            currentAnimTrack = nil
+        end
+        
+        if animationEnabled then -- [cite: 117]
+            local animation = Instance.new("Animation")
+            animation.AnimationId = "rbxassetid://94801402358822"
+            
+            currentAnimTrack = humanoid:LoadAnimation(animation)
+            currentAnimTrack.Looped = true
+            currentAnimTrack:Play()
+        end -- [cite: 118]
+    end)
+end
+
+local function stopAnimation()
+    if currentAnimTrack then
+        currentAnimTrack:Stop()
+        currentAnimTrack = nil
+    end
+end
+
+-- FLING SYSTEM
+local hiddenfling = true 
+local flingThread = nil
+
+local function stopFling()
+    hiddenfling = false
+    flingThread = nil
+end
+
+local function startFling()
+    if flingThread or not hiddenfling then
+        return 
+    end
+    
+    flingThread = coroutine.create(function()
+        local lp = player -- [cite: 119]
+        local c, hrp_fling, vel, movel = nil, nil, nil, 0.1
+    
+        while hiddenfling do
+            RunService.Heartbeat:Wait()
+            c = lp.Character
+            hrp_fling = c and c:FindFirstChild("HumanoidRootPart")
+    
+            if hrp_fling then
+                vel = hrp_fling.Velocity -- [cite: 120]
+                hrp_fling.Velocity = vel * 10000 + Vector3.new(0, 10000, 0)
+                RunService.RenderStepped:Wait()
+                hrp_fling.Velocity = vel
+                RunService.Stepped:Wait()
+                hrp_fling.Velocity = vel + Vector3.new(0, movel, 0) -- [cite: 121]
+                movel = -movel
+            end
+        end
+    end)
+    coroutine.resume(flingThread)
+end
+
+-- Auto Queue
+PlaceId = game.PlaceId
+if PlaceId == 131623223084840 then
+    local BRAINROT_OPTIONS = {
+        "Meta Technetta",
+        "Doomini Tiktookini",
+        "Tung Tung Clownissimo",
+        "Anububu", -- [cite: 122]
+        "Magmew",
+        "Noobini Infeeny"
+    }
+    
+    local function fileExists(filename)
+        local success, result = pcall(function()
+            readfile(filename)
+        end)
+        return success
+    end
+    
+    local function readConfigFile()
+        if fileExists(CONFIG_FILE) then
+            local success, result = pcall(function() -- [cite: 123]
+                return HttpService:JSONDecode(readfile(CONFIG_FILE))
+            end)
+            if success then
+                return result
+            end
+        end
+        return {} -- [cite: 124]
+    end
+    
+    local function writeConfigFile(configData)
+        pcall(function()
+            writefile(CONFIG_FILE, HttpService:JSONEncode(configData))
+        end)
+    end
+    
+    local configData = readConfigFile()
+    local selectedBrainrot = configData.selectedBrainrot
+    
+    if not selectedBrainrot or selectedBrainrot == "" then
+        local function showSelectionMenu() -- [cite: 125]
+            local menuOpen = true
+            
+            if playerGui:FindFirstChild("BrainrotSelectionMenu") then
+                playerGui.BrainrotSelectionMenu:Destroy()
+            end
+            
+            local screenGui = Instance.new("ScreenGui") -- [cite: 126]
+            screenGui.Name = "BrainrotSelectionMenu"
+            screenGui.Parent = playerGui
+            
+            local titleLabel = Instance.new("TextLabel")
+            titleLabel.Size = UDim2.new(0, 400, 0, 50)
+            titleLabel.Position = UDim2.new(0.5, -200, 0, 20)
+            titleLabel.BackgroundColor3 = Color3.fromRGB(255, 85, 0) -- [cite: 127]
+            titleLabel.TextColor3 = Color3.new(1, 1, 1)
+            titleLabel.Text = "Select Brainrot for Auto Queue"
+            titleLabel.Font = Enum.Font.SourceSansBold
+            titleLabel.TextScaled = true
+            titleLabel.Parent = screenGui
+            
+            for i, brainrotName in ipairs(BRAINROT_OPTIONS) do -- [cite: 128]
+                local button = Instance.new("TextButton")
+                button.Size = UDim2.new(0, 300, 0, 40)
+                button.Position = UDim2.new(0.5, -150, 0, 80 + (i - 1) * 50)
+                button.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+                button.TextColor3 = Color3.new(1, 1, 1) -- [cite: 129]
+                button.Text = brainrotName
+                button.Font = Enum.Font.SourceSansBold
+                button.TextScaled = true
+                button.Parent = screenGui -- [cite: 130]
+                
+                button.MouseButton1Click:Connect(function()
+                    selectedBrainrot = brainrotName
+                    local configData = readConfigFile()
+                    configData.selectedBrainrot = brainrotName
+                    writeConfigFile(configData) -- [cite: 131]
+                    screenGui:Destroy()
+                    menuOpen = false
+                end)
+            end
+            
+            while menuOpen do -- [cite: 132]
+                task.wait(0.1)
+            end
+            
+            return selectedBrainrot
+        end
+        
+        selectedBrainrot = showSelectionMenu()
+    end
+    
+    local function equipBrainrot()
+        local playerChar = player.Character -- [cite: 133]
+        if not playerChar then return end
+        local humanoid = playerChar:FindFirstChildOfClass("Humanoid")
+        local backpack = player:FindFirstChildOfClass("Backpack")
+        
+        if humanoid and backpack then
+            local foundTool = nil
+            
+            for _, tool in ipairs(backpack:GetChildren()) do -- [cite: 134]
+                if tool:IsA("Tool") and tool:GetAttribute("BrainrotName") == selectedBrainrot then
+                    local scale = tool:GetAttribute("Scale")
+                    if scale and scale > 0.8 and scale < 1.2 then
+                        foundTool = tool -- [cite: 135]
+                        break
+                    end
+                end
+            end
+            
+            if not foundTool then -- [cite: 136]
+                for _, tool in ipairs(backpack:GetChildren()) do
+                    if tool:IsA("Tool") and tool:GetAttribute("BrainrotName") == selectedBrainrot then
+                        foundTool = tool
+                        break -- [cite: 137]
+                    end
+                end
+            end
+            
+            if foundTool then
+                humanoid:EquipTool(foundTool)
+            end -- [cite: 138]
+        end
+        
+        task.wait(0.1)
+        
+        local Event = ReplicatedStorage.Shared.Remotes.Networking["RE/ArenaPortal/ArenaQueueJoin"]
+        pcall(function()
+            Event:FireServer("TsunamiArena_FFA_8")
+        end)
+    end
+    
+    equipBrainrot()
+    
+    while true do -- [cite: 139]
+        task.wait(125)
+        equipBrainrot()
+    end
+end
+
+-- Infinity filter
+local INFINITY_NAMES = {
+    ["Meta Technetta"] = true,
+    ["Doomini Tiktookini"] = true,
+    ["Tung Tung Clownissimo"] = true,
+    ["Anububu"] = true,
+    ["Magmew"] = true,
+    ["Noobini Infeeny"] = true
+}
+
+-- Configuration
+local HITBOX_SIZE = Vector3.new(25, 25, 25)
+local ARENA_FOLDER_NAME = "ArenaBrainrots"
+_G.OriginalArenaData = _G.OriginalArenaData or {}
+_G.ExpandedBrainrots = _G.ExpandedBrainrots or {}
+
+-- Settings
+local autoHarpoonEnabled = true
+local batHittingEnabled = true
+local tweenSpeed = 5000
+local CARRY_TWEEN_SPEED = 1500
+local ARRIVAL_THRESHOLD = 0.0005 -- [cite: 140]
+local MIN_TWEEN_TIME = 0.0005
+local arrivalDelay = 0.2
+local heightOffset = 5
+local POSITION_TOLERANCE = 10
+local useStaticPreCarryPos = false
+local STATIC_PRE_CARRY_POS = Vector3.new(5607.8289794921875, 3.184196710586548, 2680.5279541015625)
+local batSwingSpeed = 0.1
+
+-- Function to load all configs
+local function loadAllConfigs()
+    local success, result = pcall(function()
+        return readfile(CONFIG_FILE)
+    end)
+    
+    if success and result then
+        local decoded = HttpService:JSONDecode(result)
+        tweenSpeed = decoded.tweenSpeed or 5000
+        CARRY_TWEEN_SPEED = decoded.carryTweenSpeed or 1500 -- [cite: 141]
+        arrivalDelay = decoded.arrivalDelay or 0.2
+        heightOffset = decoded.heightOffset or 5
+        useStaticPreCarryPos = decoded.useStaticPreCarryPos or false
+        autoHarpoonEnabled = decoded.autoHarpoonEnabled or true
+        batHittingEnabled = decoded.batHittingEnabled or true
+        batSwingSpeed = decoded.batSwingSpeed or 0.1
+        animationEnabled = decoded.animationEnabled or true
+        hiddenfling = decoded.hiddenfling ~= nil and decoded.hiddenfling or true
+    end
+end
+
+-- Function to save all configs
+local function saveAllConfigs()
+    local success = pcall(function() -- [cite: 142]
+        writefile(CONFIG_FILE, HttpService:JSONEncode({
+            tweenSpeed = tweenSpeed,
+            carryTweenSpeed = CARRY_TWEEN_SPEED,
+            arrivalDelay = arrivalDelay,
+            heightOffset = heightOffset,
+            useStaticPreCarryPos = useStaticPreCarryPos,
+            autoHarpoonEnabled = autoHarpoonEnabled,
+            batHittingEnabled = batHittingEnabled, -- [cite: 143]
+            batSwingSpeed = batSwingSpeed,
+            animationEnabled = animationEnabled,
+            hiddenfling = hiddenfling,
+            selectedBrainrot = ""
+        }))
+    end)
+    return success
+end
+
+loadAllConfigs()
+
+-- Auto rejoin
+local mainGameId = 131623223084840
+GuiService.ErrorMessageChanged:Connect(function()
+    TeleportService:Teleport(mainGameId, player)
+end)
+
+-- Match End Detection
+local function setupMatchEndDetection()
+    task.spawn(function()
+        while true do -- [cite: 144]
+            pcall(function()
+                local Event = ReplicatedStorage.Shared.Remotes.Networking["RE/Misc/DisplayPopup"]
+                for _, Connection in getconnections(Event.OnClientEvent) do
+                    local old;
+                    old = hookfunction(Connection.Function, function(messageType, messageText, playerInstance) -- [cite: 145]
+                        if messageType == "Success" and string.find(messageText, "secured") and string.find(messageText, "brainrot") and string.find(messageText, "inventory") then
+                            sendWebhook(messageText)
+                            TeleportService:Teleport(mainGameId, player)
+                        end -- [cite: 146]
+                    
+                        return old(messageType, messageText, playerInstance)
+                    end)
+                end -- [cite: 147]
+            end)
+            task.wait(1)
+        end
+    end)
+end
+
+task.spawn(setupMatchEndDetection)
+
+-- Anti-ragdoll & Improved Respawn
+local function setupCharacter(character)
+    local humanoid = character:WaitForChild("Humanoid")
+    humanoid.Sit = false
+    
+    local connections = {}
+    
+    local function handleBadState(newState)
+        if newState == Enum.HumanoidStateType.Ragdoll or 
+           newState == Enum.HumanoidStateType.FallingDown or -- [cite: 148]
+           newState == Enum.HumanoidStateType.PlatformStanding or
+           newState == Enum.HumanoidStateType.Seated then
+            humanoid.Sit = false
+            humanoid.PlatformStand = false
+            humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+            if character:FindFirstChild("HumanoidRootPart") then
+                character.HumanoidRootPart.Anchored = false -- [cite: 149]
+            end
+            return true
+        end
+        return false
+    end
+    
+    handleBadState(humanoid:GetState())
+    
+    table.insert(connections, humanoid.StateChanged:Connect(function(_, newState)
+        handleBadState(newState)
+    end))
+    
+    for _, seat in pairs(workspace:GetDescendants()) do
+        if seat:IsA("Seat") then -- [cite: 150]
+            table.insert(connections, seat:GetPropertyChangedSignal("Occupant"):Connect(function()
+                if seat.Occupant == humanoid then
+                    task.wait(0.04)
+                    humanoid.Sit = false
+                    humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) -- [cite: 151]
+                end
+            end))
+        end
+    end
+    
+    table.insert(connections, humanoid.Died:Connect(function()
+        for _, conn in ipairs(connections) do
+            conn:Disconnect()
+        end
+        -- FIX: Animation and Fling start 1.5s after dying 
+        task.wait(1.5) 
+        if hiddenfling then startFling() end
+        playAnimation(player.Character or player.CharacterAdded:Wait())
+    end))
+    
+    playAnimation(character)
+end
+
+-- Anti-Fling System
+local AntiFlingConnections = {}
+
+local function setupAntiFling()
+    local function applyAntiFlingToTarget(part)
+        if part and part:IsA("Part") and part.Parent ~= char and part.Anchored == false and part.Name == "HumanoidRootPart" then
+            local connection = RunService.Heartbeat:Connect(function()
+                if part and part.Parent then -- [cite: 153]
+                    part.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
+                    part.Velocity = Vector3.new(0, 0, 0)
+                    part.RotVelocity = Vector3.new(0, 0, 0)
+                    part.CanCollide = false -- [cite: 154]
+                end
+            end)
+            AntiFlingConnections[part] = connection
+        end
+    end
+    
+    for _, v in ipairs(Workspace:GetDescendants()) do
+        applyAntiFlingToTarget(v)
+    end
+    
+    Workspace.DescendantAdded:Connect(function(part)
+        task.wait(0.1) -- [cite: 155]
+        applyAntiFlingToTarget(part)
+    end)
+end
+
+task.spawn(setupAntiFling)
+
+-- Auto Equip Shield
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if not char then continue end
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if not humanoid then continue end
+
+        local carrying = char:FindFirstChild("RenderedBrainrot") ~= nil
+        local backpack = player:FindFirstChildOfClass("Backpack")
+
+        local function findTool(gearType) -- [cite: 156]
+            for _, tool in ipairs(char:GetChildren()) do
+                if tool:IsA("Tool") and tool:GetAttribute("GearType") == gearType then
+                    return tool
+                end
+            end
+            if backpack then -- [cite: 157]
+                for _, tool in ipairs(backpack:GetChildren()) do
+                    if tool:IsA("Tool") and tool:GetAttribute("GearType") == gearType then
+                        return tool
+                    end -- [cite: 158]
+                end
+            end
+            return nil
+        end
+
+        if carrying then
+            local tool = findTool("Wave Shield")
+            if tool then
+                if tool.Parent ~= char then -- [cite: 159]
+                    humanoid:EquipTool(tool)
+                end
+                if not char:FindFirstChild(tool.Name) then
+                    tool.Parent = char
+                    humanoid:EquipTool(tool) -- [cite: 160]
+                end
+            end
+        end
+    end
+end)
+
+-- Execution positions
+local PRE_CARRY_POSITIONS = {
+    Vector3.new(6009.48876953125, -2.823592185974121, 2686.699462890625),
+    Vector3.new(5608.0771484375, -2.823591947555542, 3086.49853515625),
+    Vector3.new(5605.2412109375, -2.823591947555542, 2284.472900390625),
+    Vector3.new(5208.5087890625, -2.8235924243927, 2684.440673828125)
+}
+
+local TARGET_POSITIONS = {
+    Vector3.new(7183.76220703125, 3.184265375137329, 2690.36376953125),
+    Vector3.new(5611.3349609375, 3.1843338012695312, 1092.7916259765625),
+    Vector3.new(4021.99951171875, 3.184265375137329, 2684.496337890625),
+    Vector3.new(5612.6328125, 3.184196710586548, 4285.27880859375) -- [cite: 161]
+}
+
+task.wait(2)
+
+local function getClosestTarget(pos, positions)
+    local closest = nil
+    local shortestDist = math.huge
+    for _, tPos in ipairs(positions) do
+        local dist = (pos - tPos).Magnitude
+        if dist < shortestDist then
+            shortestDist = dist
+            closest = tPos
+        end
+    end
+    return closest
+end
+
+local function getRandomOffsetPosition(basePos) -- [cite: 162]
+    local offset = math.random(30, 50)
+    local direction = math.random(0, 1) == 1 and 1 or -1
+    return basePos + Vector3.new(offset * direction, 0, 0)
+end
+
+local function hasArrivedAtPosition(currentPos, targetPos, tolerance)
+    return (currentPos - targetPos).Magnitude <= tolerance
+end
+
+local PRE_CARRY_POS = getClosestTarget(hrp.Position, PRE_CARRY_POSITIONS)
+local FINAL_EXECUTION_POS = getClosestTarget(hrp.Position, TARGET_POSITIONS)
+
+-- PROXIMITY PROMPT SYSTEM
+local PromptCache = {}
+local PromptDistCache = {}
+
+local function enableInstantPrompt(p)
+    if not p or not p.Parent then return end
+    if not PromptCache[p] then PromptCache[p] = p.HoldDuration end
+    p.HoldDuration = 0
+    p.Enabled = true -- [cite: 163]
+    
+    if not PromptDistCache[p] then PromptDistCache[p] = p.MaxActivationDistance end
+    p.MaxActivationDistance = 50
+end
+
+local function getTakePrompts(target)
+    local prompts = {}
+    local seen = {}
+    
+    local function addPrompt(p)
+        if p and p:IsA("ProximityPrompt") and not seen[p] then
+            seen[p] = true
+            table.insert(prompts, p)
+        end
+    end -- [cite: 164]
+
+    pcall(function()
+        local ro = target:FindFirstChild("Root")
+        if ro then
+            local tp = ro:FindFirstChild("TakePrompt")
+            if tp then addPrompt(tp) end
+        end
+    end)
+
+    if #prompts == 0 then
+        local tp = target:FindFirstChild("TakePrompt", true)
+        if tp then addPrompt(tp) end -- [cite: 165]
+    end
+
+    if #prompts == 0 then
+        for _, d in ipairs(target:GetDescendants()) do
+            addPrompt(d)
+        end
+    end
+    return prompts
+end
+
+-- Hitbox Expansion
+local function expandPlayerHitboxes()
+    local folder = Workspace:FindFirstChild(ARENA_FOLDER_NAME)
+    if not folder then return end
+    
+    for _, obj in ipairs(folder:GetChildren()) do
+        local root = obj:FindFirstChild("Root", true) or obj:FindFirstChildWhichIsA("BasePart") -- [cite: 166]
+        if root then
+            local isInfinity = false
+            for _, child in ipairs(obj:GetChildren()) do
+                if INFINITY_NAMES[child.Name] then
+                    isInfinity = true
+                    break -- [cite: 167]
+                end
+            end
+            
+            if isInfinity then
+                if _G.ExpandedBrainrots[root] == nil then -- [cite: 168]
+                    _G.ExpandedBrainrots[root] = true
+                    
+                    if _G.OriginalArenaData[root] == nil then
+                        _G.OriginalArenaData[root] = { -- [cite: 169]
+                            Size = root.Size,
+                            Transparency = root.Transparency,
+                            CanCollide = root.CanCollide, -- [cite: 170]
+                            Massless = root.Massless
+                        }
+                    end
+                    
+                    root.Massless = true -- [cite: 171]
+                    root.Size = HITBOX_SIZE
+                    root.Transparency = 0.8
+                    root.CanCollide = false -- [cite: 172]
+                    root.CanTouch = true
+                    root.CanQuery = true
+                end
+            end
+        end
+    end
+end
+
+-- Cleanup
+local function cleanupRemovedBrainrots() -- [cite: 173]
+    for brainrotRoot, _ in pairs(_G.ExpandedBrainrots) do
+        if not brainrotRoot.Parent then
+            if _G.OriginalArenaData[brainrotRoot] then
+                pcall(function()
+                    local originalData = _G.OriginalArenaData[brainrotRoot]
+                    brainrotRoot.Size = originalData.Size -- [cite: 174]
+                    brainrotRoot.Transparency = originalData.Transparency
+                    brainrotRoot.CanCollide = originalData.CanCollide
+                    brainrotRoot.Massless = originalData.Massless
+                end) -- [cite: 175]
+            end
+            
+            _G.ExpandedBrainrots[brainrotRoot] = nil
+            _G.OriginalArenaData[brainrotRoot] = nil
+        end
+    end
+end
+
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        expandPlayerHitboxes()
+        cleanupRemovedBrainrots()
+    end -- [cite: 176]
+end)
+
+local function getClosestBrainrot()
+    local folder = Workspace:FindFirstChild(ARENA_FOLDER_NAME)
+    if not folder then return nil end
+    local closest = nil
+    local shortestDist = math.huge
+    for _, obj in ipairs(folder:GetChildren()) do
+        local root = obj:FindFirstChild("Root", true) or obj:FindFirstChildWhichIsA("BasePart")
+        if root then
+            local isInfinity = false
+            for _, child in ipairs(obj:GetChildren()) do
+                if INFINITY_NAMES[child.Name] then -- [cite: 177]
+                    isInfinity = true
+                    break
+                end
+            end
+            if isInfinity then -- [cite: 178]
+                local dist = (hrp.Position - root.Position).Magnitude
+                if dist < shortestDist then
+                    shortestDist = dist
+                    closest = root
+                end -- [cite: 179]
+            end
+        end
+    end
+    return closest
+end
+
+-- Find Bat
+local function findBat()
+    local backpack = player:FindFirstChildOfClass("Backpack")
+    local preferredBat = nil
+    local fallbackBat = nil
+    
+    for _, tool in ipairs(char:GetChildren()) do
+        if tool:IsA("Tool") then
+            local gearType = tool:GetAttribute("GearType") -- [cite: 180]
+            local gearMutation = tool:GetAttribute("GearMutation")
+            
+            if gearType == "Bat" or string.find(tool.Name, "Bat") then
+                fallbackBat = tool
+                if gearMutation == "Diamond" then
+                    preferredBat = tool -- [cite: 181]
+                    break
+                end
+            end
+        end
+    end
+    
+    if not preferredBat and backpack then
+        for _, tool in ipairs(backpack:GetChildren()) do -- [cite: 182]
+            if tool:IsA("Tool") then
+                local gearType = tool:GetAttribute("GearType")
+                local gearMutation = tool:GetAttribute("GearMutation")
+                
+                if gearType == "Bat" or string.find(tool.Name, "Bat") then
+                    fallbackBat = tool -- [cite: 183]
+                    if gearMutation == "Diamond" then
+                        preferredBat = tool
+                        break
+                    end -- [cite: 184]
+                end
+            end
+        end
+    end
+    
+    return preferredBat or fallbackBat
+end
+
+-- Bat System
+local isAutoClicking = false
+
+local function equipAndSwingBat()
+    task.spawn(function()
+        while true do
+            task.wait(0.1) -- [cite: 185]
+            if not char then continue end
+            
+            local target = getClosestBrainrot()
+            local carrying = char:FindFirstChild("RenderedBrainrot") ~= nil
+            
+            if target and not carrying and batHittingEnabled then -- [cite: 186]
+                local humanoid = char:FindFirstChildOfClass("Humanoid")
+                local bat = findBat()
+                
+                if humanoid and bat then
+                    local equippedShield = nil -- [cite: 187]
+                    for _, tool in ipairs(char:GetChildren()) do
+                        if tool:IsA("Tool") and tool:GetAttribute("GearType") == "Wave Shield" then
+                            equippedShield = tool -- [cite: 188]
+                            break
+                        end
+                    end
+                    
+                    if equippedShield then -- [cite: 189]
+                        humanoid:UnequipTools()
+                        task.wait(0.1)
+                    end -- [cite: 190]
+                    
+                    if bat.Parent ~= char then
+                        humanoid:EquipTool(bat)
+                    end -- [cite: 191]
+                    
+                    task.wait(0.2)
+                    isAutoClicking = true -- [cite: 192]
+                    
+                    while target and target.Parent and batHittingEnabled do -- [cite: 193]
+                        carrying = char:FindFirstChild("RenderedBrainrot") ~= nil
+                        if carrying then -- [cite: 194]
+                            isAutoClicking = false
+                            break
+                        end
+                        task.wait(batSwingSpeed) -- [cite: 195]
+                        target = getClosestBrainrot()
+                    end
+                    
+                    isAutoClicking = false -- [cite: 196]
+                    
+                    if carrying and bat.Parent == char then -- [cite: 197]
+                        humanoid:UnequipTools()
+                    end
+                end
+            else
+                isAutoClicking = false -- [cite: 198]
+            end
+        end
+    end)
+end
+
+RunService.Heartbeat:Connect(function()
+    if isAutoClicking then
+        pcall(function()
+            mouse1click()
+        end)
+    end
+end)
+
+equipAndSwingBat()
+
+-- GUI SYSTEM
+local function createGUI()
+    if playerGui:FindFirstChild("AutoHarpoonGUI") then -- [cite: 199]
+        playerGui.AutoHarpoonGUI:Destroy()
+    end
+
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "AutoHarpoonGUI"
+    screenGui.Parent = playerGui
+
+    local toggleButton = Instance.new("TextButton")
+    toggleButton.Size = UDim2.new(0, 120, 0, 35)
+    toggleButton.Position = UDim2.new(0, 10, 0, 10)
+    toggleButton.Text = autoHarpoonEnabled and "Auto Grab: ON" or "Auto Grab: OFF"
+    toggleButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    toggleButton.TextColor3 = Color3.new(1,1,1)
+    toggleButton.Font = Enum.Font.SourceSans
+    toggleButton.TextScaled = true
+    toggleButton.Parent = screenGui -- [cite: 200]
+    
+    local toggleButtonCorner = Instance.new("UICorner")
+    toggleButtonCorner.CornerRadius = UDim.new(0, 8)
+    toggleButtonCorner.Parent = toggleButton
+    local toggleButtonStroke = Instance.new("UIStroke")
+    toggleButtonStroke.Color = Color3.new(1, 1, 1)
+    toggleButtonStroke.Thickness = 2
+    toggleButtonStroke.Parent = toggleButton
+    toggleButton.MouseButton1Click:Connect(function()
+        autoHarpoonEnabled = not autoHarpoonEnabled
+        toggleButton.Text = autoHarpoonEnabled and "Auto Grab: ON" or "Auto Grab: OFF"
+    end)
+
+    local speedBox = Instance.new("TextBox")
+    speedBox.Size = UDim2.new(0, 120, 0, 35) -- [cite: 201]
+    speedBox.Position = UDim2.new(0, 10, 0, 50)
+    speedBox.Text = tostring(tweenSpeed)
+    speedBox.PlaceholderText = "Tween Speed"
+    speedBox.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    speedBox.TextColor3 = Color3.new(1,1,1)
+    speedBox.Font = Enum.Font.SourceSans
+    speedBox.TextScaled = true
+    speedBox.ClearTextOnFocus = false
+    speedBox.Parent = screenGui
+    local speedBoxCorner = Instance.new("UICorner")
+    speedBoxCorner.CornerRadius = UDim.new(0, 8)
+    speedBoxCorner.Parent = speedBox
+    local speedBoxStroke = Instance.new("UIStroke")
+    speedBoxStroke.Color = Color3.new(1, 1, 1)
+    speedBoxStroke.Thickness = 2 -- [cite: 202]
+    speedBoxStroke.Parent = speedBox
+    speedBox.FocusLost:Connect(function()
+        local val = tonumber(speedBox.Text)
+        if val then tweenSpeed = math.clamp(val,50,50000) end
+        speedBox.Text = tostring(tweenSpeed)
+    end)
+
+    local execSpeedBox = Instance.new("TextBox")
+    execSpeedBox.Size = UDim2.new(0, 120, 0, 35)
+    execSpeedBox.Position = UDim2.new(0, 10, 0, 90)
+    execSpeedBox.Text = tostring(CARRY_TWEEN_SPEED)
+    execSpeedBox.PlaceholderText = "Execution Speed"
+    execSpeedBox.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    execSpeedBox.TextColor3 = Color3.new(1,1,1) -- [cite: 203]
+    execSpeedBox.Font = Enum.Font.SourceSans
+    execSpeedBox.TextScaled = true
+    execSpeedBox.ClearTextOnFocus = false
+    execSpeedBox.Parent = screenGui
+    local execSpeedBoxCorner = Instance.new("UICorner")
+    execSpeedBoxCorner.CornerRadius = UDim.new(0, 8)
+    execSpeedBoxCorner.Parent = execSpeedBox
+    local execSpeedBoxStroke = Instance.new("UIStroke")
+    execSpeedBoxStroke.Color = Color3.new(1, 1, 1)
+    execSpeedBoxStroke.Thickness = 2
+    execSpeedBoxStroke.Parent = execSpeedBox
+    execSpeedBox.FocusLost:Connect(function()
+        local val = tonumber(execSpeedBox.Text)
+        if val then CARRY_TWEEN_SPEED = math.clamp(val,50,50000) end -- [cite: 204]
+        execSpeedBox.Text = tostring(CARRY_TWEEN_SPEED)
+    end)
+
+    local arrivalBox = Instance.new("TextBox")
+    arrivalBox.Size = UDim2.new(0, 120, 0, 35)
+    arrivalBox.Position = UDim2.new(0, 10, 0, 130)
+    arrivalBox.Text = tostring(arrivalDelay*1000)
+    arrivalBox.PlaceholderText = "Arrival Delay (ms)"
+    arrivalBox.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    arrivalBox.TextColor3 = Color3.new(1,1,1)
+    arrivalBox.Font = Enum.Font.SourceSans
+    arrivalBox.TextScaled = true
+    arrivalBox.ClearTextOnFocus = false
+    arrivalBox.Parent = screenGui
+    local arrivalBoxCorner = Instance.new("UICorner") -- [cite: 205]
+    arrivalBoxCorner.CornerRadius = UDim.new(0, 8)
+    arrivalBoxCorner.Parent = arrivalBox
+    local arrivalBoxStroke = Instance.new("UIStroke")
+    arrivalBoxStroke.Color = Color3.new(1, 1, 1)
+    arrivalBoxStroke.Thickness = 2
+    arrivalBoxStroke.Parent = arrivalBox
+    arrivalBox.FocusLost:Connect(function()
+        local val = tonumber(arrivalBox.Text)
+        if val then arrivalDelay = math.clamp(val/1000, 0.01, 10) end
+        arrivalBox.Text = tostring(arrivalDelay*1000)
+    end)
+
+    local heightBox = Instance.new("TextBox")
+    heightBox.Size = UDim2.new(0, 120, 0, 35) -- [cite: 206]
+    heightBox.Position = UDim2.new(0, 10, 0, 170)
+    heightBox.Text = tostring(heightOffset)
+    heightBox.PlaceholderText = "Height Offset"
+    heightBox.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    heightBox.TextColor3 = Color3.new(1,1,1)
+    heightBox.Font = Enum.Font.SourceSans
+    heightBox.TextScaled = true
+    heightBox.ClearTextOnFocus = false
+    heightBox.Parent = screenGui
+    local heightBoxCorner = Instance.new("UICorner")
+    heightBoxCorner.CornerRadius = UDim.new(0, 8)
+    heightBoxCorner.Parent = heightBox
+    local heightBoxStroke = Instance.new("UIStroke")
+    heightBoxStroke.Color = Color3.new(1, 1, 1)
+    heightBoxStroke.Thickness = 2 -- [cite: 207]
+    heightBoxStroke.Parent = heightBox
+    heightBox.FocusLost:Connect(function()
+        local val = tonumber(heightBox.Text)
+        if val then heightOffset = math.clamp(val, -50, 50) end
+        heightBox.Text = tostring(heightOffset)
+    end)
+
+    local preCarryToggle = Instance.new("TextButton")
+    preCarryToggle.Size = UDim2.new(0, 120, 0, 35)
+    preCarryToggle.Position = UDim2.new(0, 10, 0, 210)
+    preCarryToggle.Text = useStaticPreCarryPos and "Pos: STATIC" or "Pos: DYNAMIC" -- [cite: 208]
+    preCarryToggle.BackgroundColor3 = useStaticPreCarryPos and Color3.fromRGB(255, 150, 0) or Color3.fromRGB(100, 200, 100)
+    preCarryToggle.TextColor3 = Color3.new(1, 1, 1)
+    preCarryToggle.Font = Enum.Font.SourceSans
+    preCarryToggle.TextScaled = true
+    preCarryToggle.Parent = screenGui
+    local preCarryToggleCorner = Instance.new("UICorner")
+    preCarryToggleCorner.CornerRadius = UDim.new(0, 8)
+    preCarryToggleCorner.Parent = preCarryToggle
+    local preCarryToggleStroke = Instance.new("UIStroke")
+    preCarryToggleStroke.Color = Color3.new(1, 1, 1)
+    preCarryToggleStroke.Thickness = 2
+    preCarryToggleStroke.Parent = preCarryToggle
+    
+    preCarryToggle.MouseButton1Click:Connect(function()
+        useStaticPreCarryPos = not useStaticPreCarryPos -- [cite: 209]
+        preCarryToggle.Text = useStaticPreCarryPos and "Pos: STATIC" or "Pos: DYNAMIC"
+        preCarryToggle.BackgroundColor3 = useStaticPreCarryPos and Color3.fromRGB(255, 150, 0) or Color3.fromRGB(100, 200, 100)
+    end)
+
+    local batToggle = Instance.new("TextButton")
+    batToggle.Size = UDim2.new(0, 120, 0, 35)
+    batToggle.Position = UDim2.new(0, 10, 0, 250)
+    batToggle.Text = batHittingEnabled and "Bat: ON" or "Bat: OFF"
+    batToggle.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    batToggle.TextColor3 = Color3.new(1,1,1) -- [cite: 210]
+    batToggle.Font = Enum.Font.SourceSans
+    batToggle.TextScaled = true
+    batToggle.Parent = screenGui
+    local batToggleCorner = Instance.new("UICorner")
+    batToggleCorner.CornerRadius = UDim.new(0, 8)
+    batToggleCorner.Parent = batToggle
+    local batToggleStroke = Instance.new("UIStroke")
+    batToggleStroke.Color = Color3.new(1, 1, 1)
+    batToggleStroke.Thickness = 2
+    batToggleStroke.Parent = batToggle
+    
+    batToggle.MouseButton1Click:Connect(function()
+        batHittingEnabled = not batHittingEnabled
+        batToggle.Text = batHittingEnabled and "Bat: ON" or "Bat: OFF" -- [cite: 211]
+    end)
+
+    local batSpeedBox = Instance.new("TextBox")
+    batSpeedBox.Size = UDim2.new(0, 120, 0, 35)
+    batSpeedBox.Position = UDim2.new(0, 10, 0, 290)
+    batSpeedBox.Text = tostring(batSwingSpeed)
+    batSpeedBox.PlaceholderText = "Bat Swing Speed"
+    batSpeedBox.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    batSpeedBox.TextColor3 = Color3.new(1,1,1)
+    batSpeedBox.Font = Enum.Font.SourceSans
+    batSpeedBox.TextScaled = true
+    batSpeedBox.ClearTextOnFocus = false
+    batSpeedBox.Parent = screenGui
+    local batSpeedBoxCorner = Instance.new("UICorner")
+    batSpeedBoxCorner.CornerRadius = UDim.new(0, 8) -- [cite: 212]
+    batSpeedBoxCorner.Parent = batSpeedBox
+    local batSpeedBoxStroke = Instance.new("UIStroke")
+    batSpeedBoxStroke.Color = Color3.new(1, 1, 1)
+    batSpeedBoxStroke.Thickness = 2
+    batSpeedBoxStroke.Parent = batSpeedBox
+    batSpeedBox.FocusLost:Connect(function()
+        local val = tonumber(batSpeedBox.Text)
+        if val then batSwingSpeed = math.clamp(val, 0.01, 1) end
+        batSpeedBox.Text = tostring(batSwingSpeed)
+    end)
+
+    local animToggle = Instance.new("TextButton")
+    animToggle.Size = UDim2.new(0, 120, 0, 35) -- [cite: 213]
+    animToggle.Position = UDim2.new(0, 10, 0, 330)
+    animToggle.Text = animationEnabled and "Anim: ON" or "Anim: OFF"
+    animToggle.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    animToggle.TextColor3 = Color3.new(1,1,1)
+    animToggle.Font = Enum.Font.SourceSans
+    animToggle.TextScaled = true
+    animToggle.Parent = screenGui
+    local animToggleCorner = Instance.new("UICorner")
+    animToggleCorner.CornerRadius = UDim.new(0, 8)
+    animToggleCorner.Parent = animToggle
+    local animToggleStroke = Instance.new("UIStroke")
+    animToggleStroke.Color = Color3.new(1, 1, 1)
+    animToggleStroke.Thickness = 2
+    animToggleStroke.Parent = animToggle -- [cite: 214]
+    
+    animToggle.MouseButton1Click:Connect(function()
+        animationEnabled = not animationEnabled
+        animToggle.Text = animationEnabled and "Anim: ON" or "Anim: OFF"
+        if animationEnabled then
+            playAnimation(char)
+        else
+            stopAnimation()
+        end
+    end) -- [cite: 215]
+    
+    -- NEW: FLING TOGGLE BUTTON
+    local flingToggle = Instance.new("TextButton")
+    flingToggle.Size = UDim2.new(0, 120, 0, 35)
+    flingToggle.Position = UDim2.new(0, 10, 0, 370)
+    flingToggle.Text = hiddenfling and "Fling: ON" or "Fling: OFF"
+    flingToggle.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    flingToggle.TextColor3 = Color3.new(1,1,1)
+    flingToggle.Font = Enum.Font.SourceSans
+    flingToggle.TextScaled = true
+    flingToggle.Parent = screenGui
+    local flingToggleCorner = Instance.new("UICorner")
+    flingToggleCorner.CornerRadius = UDim.new(0, 8)
+    flingToggleCorner.Parent = flingToggle
+    local flingToggleStroke = Instance.new("UIStroke")
+    flingToggleStroke.Color = Color3.new(1, 1, 1)
+    flingToggleStroke.Thickness = 2
+    flingToggleStroke.Parent = flingToggle
+    
+    flingToggle.MouseButton1Click:Connect(function()
+        hiddenfling = not hiddenfling
+        flingToggle.Text = hiddenfling and "Fling: ON" or "Fling: OFF"
+        if hiddenfling then startFling() else stopFling() end
+    end)
+
+    local saveButton = Instance.new("TextButton")
+    saveButton.Size = UDim2.new(0, 120, 0, 35)
+    saveButton.Position = UDim2.new(0, 10, 0, 410)
+    saveButton.Text = "Save Config"
+    saveButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+    saveButton.TextColor3 = Color3.new(1, 1, 1)
+    saveButton.Font = Enum.Font.SourceSans
+    saveButton.TextScaled = true
+    saveButton.Parent = screenGui
+    local saveButtonCorner = Instance.new("UICorner")
+    saveButtonCorner.CornerRadius = UDim.new(0, 8)
+    saveButtonCorner.Parent = saveButton
+    local saveButtonStroke = Instance.new("UIStroke") -- [cite: 216]
+    saveButtonStroke.Color = Color3.new(1, 1, 1)
+    saveButtonStroke.Thickness = 2
+    saveButtonStroke.Parent = saveButton
+    
+    saveButton.MouseButton1Click:Connect(function()
+        if saveAllConfigs() then
+            saveButton.Text = "Saved!"
+            task.wait(2)
+            saveButton.Text = "Save Config"
+        else
+            saveButton.Text = "Save Failed!" -- [cite: 217]
+            task.wait(2)
+            saveButton.Text = "Save Config"
+        end
+    end)
+end
+
+createGUI()
+player.CharacterAdded:Connect(function(charNew)
+    char = charNew
+    hrp = char:WaitForChild("HumanoidRootPart")
+    setupCharacter(char)
+    createGUI()
+end)
+
+local carryStage = "middle"
+if hiddenfling then startFling() end
+playAnimation(char)
+
+while true do
+    local carrying = char:FindFirstChild("RenderedBrainrot") ~= nil
+
+    if carrying then
+        local middlePos = useStaticPreCarryPos and STATIC_PRE_CARRY_POS or PRE_CARRY_POS -- [cite: 218]
+        local finalPos = getRandomOffsetPosition(FINAL_EXECUTION_POS)
+
+        if carryStage == "middle" then
+            local tweenInfo = TweenInfo.new((hrp.Position - middlePos).Magnitude / CARRY_TWEEN_SPEED, Enum.EasingStyle.Linear)
+            local tween = TweenService:Create(hrp, tweenInfo, {CFrame = CFrame.new(middlePos)})
+            tween:Play()
+            tween.Completed:Wait() -- [cite: 219]
+            
+            if hasArrivedAtPosition(hrp.Position, middlePos, POSITION_TOLERANCE) then
+                carryStage = "final"
+            end
+        elseif carryStage == "final" then -- [cite: 220]
+            if (hrp.Position - finalPos).Magnitude > 1 then
+                local dist = (hrp.Position - finalPos).Magnitude
+                local tweenTime = math.max(dist / CARRY_TWEEN_SPEED, MIN_TWEEN_TIME)
+                local tween = TweenService:Create(hrp, TweenInfo.new(tweenTime), {CFrame = CFrame.new(finalPos)})
+                tween:Play() -- [cite: 221]
+                tween.Completed:Wait()
+            end
+            task.wait(arrivalDelay)
+            task.wait(0.5)
+            PRE_CARRY_POS = getClosestTarget(hrp.Position, PRE_CARRY_POSITIONS)
+            FINAL_EXECUTION_POS = getClosestTarget(hrp.Position, TARGET_POSITIONS)
+            carryStage = "middle" -- [cite: 222]
+        end
+    else
+        carryStage = "middle"
+        local target = getClosestBrainrot()
+        if target then
+            local targetPos = target.Position + Vector3.new(0, heightOffset, 0)
+            local distance = (hrp.Position - targetPos).Magnitude
+            if distance > 1 then -- [cite: 223]
+                local tweenTime = math.max(distance / tweenSpeed, MIN_TWEEN_TIME)
+                local tween = TweenService:Create(hrp, TweenInfo.new(tweenTime), {CFrame = CFrame.new(targetPos)})
+                tween:Play()
+            end
+        else
+            local middlePos = useStaticPreCarryPos and STATIC_PRE_CARRY_POS or PRE_CARRY_POS -- [cite: 224]
+            if (hrp.Position - middlePos).Magnitude > 1 then
+                local tweenInfo = TweenInfo.new((hrp.Position - middlePos).Magnitude / CARRY_TWEEN_SPEED, Enum.EasingStyle.Linear)
+                local tween = TweenService:Create(hrp, tweenInfo, {CFrame = CFrame.new(middlePos)})
+                tween:Play()
+            end
+        end -- [cite: 225]
+    end
+
+    if autoHarpoonEnabled then
+        task.spawn(function()
+            local arenaFolder = Workspace:FindFirstChild(ARENA_FOLDER_NAME)
+            if arenaFolder then
+                for _, item in ipairs(arenaFolder:GetChildren()) do
+                    if item.Name == "RenderedBrainrot" then
+                        local prompts = getTakePrompts(item) -- [cite: 226]
+                        for _, p in ipairs(prompts) do
+                            enableInstantPrompt(p)
+                            task.spawn(function() -- [cite: 227]
+                                fireproximityprompt(p)
+                            end)
+                        end
+                    end -- [cite: 228]
+                end
+            end
+        end)
+    end
+
+    task.wait(ARRIVAL_THRESHOLD)
+end
